@@ -5,13 +5,32 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const { createApp } = Vue;
 
+// 🟢 辅助工具：提取纯净数据 (去除 expanded 等 UI 状态，只保留业务数据)
+// 用于对比数据是否真的发生了“实质性”变化
+const getPureDataString = (data) => {
+    const copy = JSON.parse(JSON.stringify(data)); // 深拷贝
+    // 遍历三个主要数组，删除 expanded 字段
+    ['tasks', 'templates', 'scheduledTasks'].forEach(key => {
+        if (copy[key]) {
+            copy[key].forEach(item => {
+                delete item.expanded; // 删除 UI 状态
+                delete item.isFromSchedule; // 这个也可以不存
+            });
+        }
+    });
+    return JSON.stringify(copy); // 返回字符串用于比较
+};
+
 createApp({
     data() {
         return {
             // --- 登录相关 ---
-            accessKey: null, // 当前登录的 Key
-            inputKey: '',    // 输入框的 Key
-            lastUpdatedAt: 0, // 本地记录的“最后同步时间戳”
+            accessKey: null,
+            inputKey: '',
+            lastUpdatedAt: 0, 
+            
+            // 🟢 新增：记录上次保存到云端的“纯净数据”快照
+            lastCloudStr: '', 
 
             // --- 业务数据 ---
             today: new Date().toISOString().split('T')[0],
@@ -31,7 +50,6 @@ createApp({
         }
     },
     computed: {
-        // UI 显示部分
         syncStatus() {
             if (this.isSyncing === 'syncing') return { text: '正在同步...', class: 'bg-blue-50 text-blue-600 border-blue-200', icon: 'ph ph-spinner animate-spin' };
             if (this.isSyncing === 'done') return { text: '云端已同步', class: 'bg-green-50 text-green-600 border-green-200', icon: 'ph-bold ph-check' };
@@ -91,32 +109,22 @@ createApp({
             return { total, done, doing, todo, rate, onTime, list };
         }
     },
-    
-    // --- 生命周期 ---
     mounted() {
-        // 1. 检查本地是否有 Access Key
         const savedKey = localStorage.getItem('planpro_access_key');
         if (savedKey) {
             this.accessKey = savedKey;
-            this.loadData(); // 有 Key 才加载数据
+            this.loadData(); 
         }
-        
-        // 2. 启动定时器
         this.checkScheduledTasks();
         this.setStatsRange('week');
         setInterval(() => { this.now = new Date(); if (this.currentView === 'dashboard' && this.viewDate === this.today) this.checkScheduledTasks(); }, 60000);
     },
-    
-    // --- 监听器 ---
     watch: {
-        // 只有登录后，数据变动才触发保存
         tasks: { handler() { if(this.accessKey) this.saveData(); }, deep: true },
         templates: { handler() { if(this.accessKey) this.saveData(); }, deep: true },
         scheduledTasks: { handler() { if(this.accessKey) this.saveData(); }, deep: true }
     },
-
     methods: {
-        // --- 登录系统 ---
         login() {
             if (!this.inputKey.trim()) return alert("Key 不能为空");
             this.accessKey = this.inputKey.trim();
@@ -127,20 +135,21 @@ createApp({
             this.inputKey = 'user_' + Math.random().toString(36).substr(2, 9);
         },
         logout() {
-            if(confirm("确定要退出当前 Key 吗？\n(本地数据会清空，但云端数据还在，下次输入 Key 可找回)")) {
+            if(confirm("确定要退出当前 Key 吗？")) {
                 localStorage.removeItem('planpro_access_key');
-                localStorage.removeItem('planpro_final_tasks'); // 清理缓存
+                localStorage.removeItem('planpro_final_tasks');
                 this.accessKey = null;
                 this.inputKey = '';
                 this.tasks = []; this.templates = []; this.scheduledTasks = [];
+                // 退出时也重置快照
+                this.lastCloudStr = '';
             }
         },
 
-        // --- 🔥 核心升级：智能加载数据 ---
         async loadData() {
             this.isSyncing = 'syncing';
             try {
-                // 1. 先尝试读取本地缓存（为了秒开）
+                // 1. 本地加载
                 const s = localStorage.getItem('planpro_final_tasks');
                 const t = localStorage.getItem('planpro_final_templates');
                 const st = localStorage.getItem('planpro_final_scheduled');
@@ -148,39 +157,47 @@ createApp({
                 if(t) this.templates = JSON.parse(t);
                 if(st) this.scheduledTasks = JSON.parse(st);
 
-                // 2. 去云端对比数据
-                console.log(`[${this.accessKey}] 正在检查云端版本...`);
-                
-                // 注意：这里多取了一个 updated_at 字段
+                // 🟢 记录本地数据的纯净快照，防止初始化时误触发保存
+                this.lastCloudStr = getPureDataString({
+                    tasks: this.tasks, 
+                    templates: this.templates, 
+                    scheduledTasks: this.scheduledTasks 
+                });
+
+                // 2. 云端加载
+                console.log(`[${this.accessKey}] 检查云端...`);
                 const { data, error } = await supabase
                     .from('user_data')
                     .select('content, updated_at')
                     .eq('my_key', this.accessKey)
                     .single();
 
-                // 3. 智能判断
                 if (data && data.content) {
                     const serverTime = data.updated_at || 0;
-                    
-                    // 如果云端时间 > 本地记录的最后时间，说明云端有新数据，必须覆盖
-                    // (简单起见，这里每次都覆盖，保证多端一致性。如果想更极致省流量，可以把本地 lastUpdatedAt 存 localStorage 对比)
                     if (serverTime > this.lastUpdatedAt) {
                         const json = data.content;
                         if(json.tasks) this.tasks = json.tasks;
                         if(json.templates) this.templates = json.templates;
                         if(json.scheduledTasks) this.scheduledTasks = json.scheduledTasks;
                         
-                        this.lastUpdatedAt = serverTime; // 更新本地时间戳
+                        this.lastUpdatedAt = serverTime;
+                        
+                        // 🟢 更新快照：因为刚从云端拉下来，所以现在是最新的
+                        this.lastCloudStr = getPureDataString({
+                            tasks: this.tasks,
+                            templates: this.templates,
+                            scheduledTasks: this.scheduledTasks
+                        });
+                        
                         this.isSyncing = 'done';
-                        console.log("云端数据更新，已同步");
+                        console.log("云端同步完成");
                     } else {
-                        console.log("本地数据已是最新");
+                        console.log("本地已最新");
                         this.isSyncing = 'idle';
                     }
                 } else {
-                    console.log("云端无数据，可能是新用户");
+                    console.log("新用户");
                     this.isSyncing = 'idle';
-                    // 如果本地有数据（刚导入的），初始化云端
                     if(this.tasks.length > 0) this.saveData();
                 }
             } catch (e) {
@@ -189,74 +206,75 @@ createApp({
             }
         },
 
-        // --- 🔥 核心升级：智能保存数据 (带冲突检测) ---
         saveData() {
             if (!this.accessKey) return;
 
-            // 1. 本地立即保存 (缓存)
+            // 1. 无论如何，先保存到本地 (包含 expanded 状态，保证刷新页面后折叠状态还在)
             localStorage.setItem('planpro_final_tasks', JSON.stringify(this.tasks)); 
             localStorage.setItem('planpro_final_templates', JSON.stringify(this.templates));
             localStorage.setItem('planpro_final_scheduled', JSON.stringify(this.scheduledTasks));
 
-            // 2. 防抖 + 智能云端保存
+            // 2. 云端防抖保存
+            // 🟢 在设置 timer 之前，先进行“脏检查”
+            // 获取当前内存中的纯净数据
+            const currentPureStr = getPureDataString({
+                tasks: this.tasks,
+                templates: this.templates,
+                scheduledTasks: this.scheduledTasks
+            });
+
+            // 🟢 如果纯净数据和上次云端的数据一样，说明只是 UI 变化（如折叠），直接返回，不调 API
+            if (currentPureStr === this.lastCloudStr) {
+                console.log("无需同步（仅UI变化）");
+                return;
+            }
+
             this.isSyncing = 'syncing';
             if (this.saveTimer) clearTimeout(this.saveTimer);
 
             this.saveTimer = setTimeout(async () => {
                 const nowTimestamp = Date.now();
                 
-                // 准备数据
-                const rawData = JSON.parse(JSON.stringify({
-                    tasks: this.tasks,
-                    templates: this.templates,
-                    scheduledTasks: this.scheduledTasks
-                }));
+                // 再次获取（因为 2秒内可能又变了）
+                const rawData = JSON.parse(currentPureStr); // 这里的 currentPureStr 已经是字符串了，转回对象发给 Supabase
 
-                // ⚠️ 冲突检测逻辑：在写入前，最好检查一下云端是不是已经被别人改了
-                // 但为了简化代码（避免二次请求），我们直接用 updated_at 覆盖
-                // 如果需要严格防冲突，这里应该先 select updated_at，比较后再 upsert
-                
                 const { error } = await supabase
                     .from('user_data')
                     .upsert(
                         { 
-                            my_key: this.accessKey, // 现在的 Key 是动态的
+                            my_key: this.accessKey, 
                             content: rawData, 
-                            updated_at: nowTimestamp // 写入当前时间戳
+                            updated_at: nowTimestamp 
                         }, 
                         { onConflict: 'my_key' }
                     );
 
                 if (error) {
-                    console.error('云端保存失败:', error);
+                    console.error('保存失败:', error);
                     this.isSyncing = 'error';
                 } else {
-                    this.lastUpdatedAt = nowTimestamp; // 更新本地时间戳
+                    this.lastUpdatedAt = nowTimestamp;
+                    // 🟢 保存成功后，更新快照
+                    this.lastCloudStr = currentPureStr;
+                    
                     this.isSyncing = 'done';
                     setTimeout(() => { if(this.isSyncing === 'done') this.isSyncing = 'idle'; }, 3000);
                 }
             }, 2000);
         },
         
-        // --- 删库跑路 (清空) ---
         handleClearData() {
             this.verifySuper(async () => {
-                if (confirm(`⚠️ 警告：将永久删除 Key [${this.accessKey}] 下的所有数据！`)) {
-                    // 1. 删云端
-                    const { error } = await supabase.from('user_data').delete().eq('my_key', this.accessKey);
-                    if (error) { alert("删除失败"); return; }
-                    
-                    // 2. 删本地
+                if (confirm(`⚠️ 警告：删除 [${this.accessKey}] 所有数据？`)) {
+                    await supabase.from('user_data').delete().eq('my_key', this.accessKey);
                     localStorage.removeItem('planpro_access_key');
                     localStorage.clear();
-                    
-                    alert("数据已清空，即将刷新");
                     location.reload();
                 }
             });
         },
 
-        // --- 其他原有业务逻辑 (保持不变) ---
+        // --- 其他逻辑 ---
         dragStart(index, event) { this.draggingIndex = index; event.dataTransfer.effectAllowed = 'move'; event.target.classList.add('dragging'); },
         dragEnd(event) { this.draggingIndex = null; event.target.classList.remove('dragging'); },
         dragDrop(toIndex) { const fromIndex = this.draggingIndex; if (fromIndex === null || fromIndex === toIndex) return; const list = this.modal.data.subtasks; const item = list.splice(fromIndex, 1)[0]; list.splice(toIndex, 0, item); },
