@@ -39,7 +39,7 @@ createApp({
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
             statsStatus: 'all',
-            statsRangeType: 'week', // 🟢 新增：记录当前选中的时间类型
+            statsRangeType: 'week', // 记录当前选中的时间类型
 
             draggingIndex: null
         }
@@ -87,7 +87,7 @@ createApp({
         overdueCount() { return this.tasks.filter(t => t.status !== 'done' && this.isOverdue(t)).length; },
         enabledScheduledCount() { return this.scheduledTasks.filter(t => t.enabled).length; },
 
-        // 🟢 修改后的统计逻辑
+        // 统计逻辑
         statsData() {
             const start = this.statsStart;
             const end = this.statsEnd;
@@ -193,7 +193,7 @@ createApp({
             if (addedCount > 0) this.saveData();
         },
 
-        // 🟢 修改后的时间筛选逻辑
+        // 时间筛选逻辑
         setStatsRange(type) {
             this.statsRangeType = type;
             const d = new Date();

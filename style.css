@@ -131,4 +131,59 @@ body {
         padding-bottom: 5rem !important;
     }
     /* 防止被底部导航遮挡 */
+
+    /* 1. 移动端弹窗容器：强制改为底部对齐 */
+    .mobile-modal-container {
+        align-items: flex-end !important; /* 让内容沉底 */
+    }
+
+    /* 2. 底部滑出面板 (Bottom Sheet) */
+    .mobile-bottom-sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-bottom-left-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+        border-top-left-radius: 1.5rem !important;
+        border-top-right-radius: 1.5rem !important;
+        max-height: 85vh !important; /* 最大高度85% */
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); /* 丝滑上滑动画 */
+        margin: 0 !important;
+    }
+
+    /* 3. 移动端详情浮层 (全屏覆盖) */
+    .mobile-detail-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background-color: white;
+        display: flex;
+        flex-direction: column;
+        animation: slideInRight 0.25s ease-out;
+    }
+
+    /* 防止移动端背景滚动 */
+    body.modal-open {
+        overflow: hidden;
+    }
+}
+
+/* 动画定义 */
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
 }
