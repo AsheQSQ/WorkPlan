@@ -91,12 +91,18 @@
 
                 <!-- View A: 今日看板 -->
                 <template v-if="currentView === 'dashboard'">
-                    <!-- 🟢 修复1: 优化头部，防止按钮挤压 -->
-                    <header class="h-16 bg-white/90 backdrop-blur px-2 md:px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
-                        <!-- 左侧：日期导航 -->
-                        <div class="flex items-center gap-1 md:gap-3 flex-1 min-w-0 overflow-hidden">
+                    <header class="h-16 bg-white/90 backdrop-blur px-2 md:px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0 gap-2">
+
+                        <!-- 修改1: 左侧显示标题，颜色统一为蓝色 -->
+                        <div class="shrink-0">
+                            <h2 class="text-lg font-bold text-blue-800">今日看板</h2>
+                            <div class="text-[10px] text-slate-400 hidden md:block">管理您的每日待办</div>
+                        </div>
+
+                        <!-- 修改1: 日期移动到中间 -->
+                        <div class="flex items-center justify-center gap-1 md:gap-3 flex-1 min-w-0 overflow-hidden">
                             <button @click="changeDate(-1)" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 text-slate-600"><i class="ph-bold ph-caret-left"></i></button>
-                            <div class="flex flex-col items-center min-w-[5rem]">
+                            <div class="flex flex-col items-center">
                                 <div class="relative group w-full text-center">
                                     <input type="date" v-model="viewDate" class="absolute inset-0 opacity-0 cursor-pointer z-10 w-full">
                                     <h2 class="text-xs md:text-lg font-bold text-slate-800 flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap">{{ dateInfo.date }} <i class="ph-fill ph-caret-down text-xs text-slate-400"></i></h2>
@@ -107,20 +113,19 @@
                             <button v-if="viewDate !== today" @click="resetToToday" class="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold whitespace-nowrap shrink-0">今</button>
                         </div>
 
-                        <!-- 右侧：操作按钮 (强制显示，缩小间距) -->
-                        <div class="flex items-center gap-1 ml-1 shrink-0">
+                        <!-- 右侧操作按钮 -->
+                        <div class="flex items-center gap-1 shrink-0">
                             <button @click="toggleAll" class="h-8 w-8 md:h-9 md:w-auto md:px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium flex items-center justify-center gap-2 shrink-0">
                                 <i :class="isAllExpanded ? 'ph ph-arrows-in-line-vertical' : 'ph ph-arrows-out-line-vertical'"></i>
                                 <span class="hidden md:inline">{{ isAllExpanded ? '收起' : '展开' }}</span>
                             </button>
-                            <button @click="openModal()" class="h-8 w-8 md:h-9 md:px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-200 flex items-center justify-center gap-2 shrink-0">
-                                <i class="ph ph-plus-bold"></i>
-                                <span class="hidden md:inline">新建</span>
-                            </button>
+                            <!-- 修改2: 新建按钮改为蓝色 (bg-blue-600) -->
+                            <button @click="openModal()" class="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-200 flex items-center gap-2"><i class="ph ph-plus-bold"></i>新建</button>
                         </div>
                     </header>
 
-                    <div class="flex-1 overflow-y-auto p-4 space-y-3 scroll-smooth">
+                    <!-- 修改4: 增加 pb-32 解决手机端无法滚动到底部的问题 -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3 scroll-smooth pb-32">
                         <!-- 预览区 -->
                         <div v-if="futurePreviews.length > 0" class="mb-6">
                             <h3 class="text-xs font-bold text-teal-600 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="ph-fill ph-calendar-plus"></i> 待自动生成 <div class="h-px bg-teal-100 flex-1"></div></h3>
@@ -216,7 +221,7 @@
                 <template v-if="currentView === 'templates'">
                     <header class="h-16 bg-white/90 backdrop-blur px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
                         <div><h2 class="text-lg font-bold text-purple-800">任务模板库</h2><div class="text-xs text-slate-500">预设常用任务</div></div>
-                        <button @click="openModal()" class="h-9 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold shadow-md shadow-purple-200 flex items-center gap-2"><i class="ph ph-plus-bold"></i> 新建</button>
+                        <button @click="openModal()" class="h-9 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold shadow-md shadow-purple-200 flex items-center gap-2"><i class="ph ph-plus-bold"></i>新建</button>
                     </header>
                     <div class="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
                         <div v-if="templates.length === 0" class="flex flex-col items-center justify-center h-64 text-slate-400"><i class="ph ph-copy text-4xl mb-2 text-purple-200"></i><p class="text-sm">暂无模板</p></div>
@@ -231,7 +236,7 @@
                 <template v-if="currentView === 'scheduled'">
                     <header class="h-16 bg-white/90 backdrop-blur px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
                         <div><h2 class="text-lg font-bold text-teal-800">定时任务</h2><div class="text-xs text-slate-500">自动重复生成的任务</div></div>
-                        <button @click="openModal()" class="h-9 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-bold shadow-md shadow-teal-200 flex items-center gap-2"><i class="ph ph-plus-bold"></i> 新建</button>
+                        <button @click="openModal()" class="h-9 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-bold shadow-md shadow-teal-200 flex items-center gap-2"><i class="ph ph-plus-bold"></i>新建</button>
                     </header>
                     <div class="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
                         <div v-if="scheduledTasks.length === 0" class="flex flex-col items-center justify-center h-64 text-slate-400"><i class="ph ph-clock-countdown text-4xl mb-2 text-teal-200"></i><p class="text-sm">暂无定时任务</p></div>
@@ -245,13 +250,14 @@
                     </div>
                 </template>
 
-                <!-- View D: 数据统计 (🟢 修复2: 增加 min-h-0 和 padding-bottom，确保可滚动) -->
+                <!-- View D: 数据统计 -->
                 <template v-if="currentView === 'statistics'">
                     <header class="h-auto md:h-16 bg-white/90 backdrop-blur px-4 md:px-6 flex flex-col md:flex-row justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0 py-2 gap-2">
                         <div><h2 class="text-lg font-bold text-indigo-800">数据统计</h2></div>
 
-                        <div class="flex flex-wrap items-center gap-2 justify-center">
-                            <select v-model="statsStatus" class="text-xs border border-slate-200 rounded px-2 py-1.5 outline-none bg-white text-slate-600 font-bold">
+                        <!-- 修改3: 手机版页面中，数据筛选需要纵向排列 (flex-col md:flex-row) -->
+                        <div class="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+                            <select v-model="statsStatus" class="w-full md:w-auto text-xs border border-slate-200 rounded px-2 py-1.5 outline-none bg-white text-slate-600 font-bold">
                                 <option value="all">全部状态</option>
                                 <option value="done">已完成</option>
                                 <option value="incomplete">未完成 (未开始+进行中)</option>
@@ -261,7 +267,7 @@
 
                             <div class="h-4 w-px bg-slate-200 hidden md:block"></div>
 
-                            <div class="flex bg-slate-100 p-1 rounded-lg gap-1 overflow-x-auto max-w-[200px] md:max-w-none scrollbar-hide">
+                            <div class="w-full md:w-auto flex bg-slate-100 p-1 rounded-lg gap-1 overflow-x-auto justify-center md:justify-start scrollbar-hide">
                                 <button @click="setStatsRange('today')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='today'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">今日</button>
                                 <button @click="setStatsRange('yesterday')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='yesterday'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">昨日</button>
                                 <button @click="setStatsRange('week')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='week'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">本周</button>
@@ -270,14 +276,14 @@
                                 <button @click="setStatsRange('lastMonth')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='lastMonth'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">上月</button>
                             </div>
 
-                            <div class="flex items-center gap-1 bg-white border border-slate-200 rounded-md px-2 py-0.5">
-                                <input type="date" v-model="statsStart" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-20">
+                            <div class="w-full md:w-auto flex items-center justify-center gap-1 bg-white border border-slate-200 rounded-md px-2 py-0.5">
+                                <input type="date" v-model="statsStart" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-24 md:w-20 text-center">
                                 <span class="text-slate-300">-</span>
-                                <input type="date" v-model="statsEnd" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-20">
+                                <input type="date" v-model="statsEnd" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-24 md:w-20 text-center">
                             </div>
                         </div>
                     </header>
-                    <!-- 增加了 min-h-0 和 pb-32，确保手机上能滚动且不被底部导航遮挡 -->
+
                     <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-32 min-h-0">
                         <!-- 统计卡片 -->
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
