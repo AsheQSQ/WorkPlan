@@ -35,3 +35,42 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity
 .primary-btn:hover { background-color: #1d4ed8; }
 .section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
 .stat-card { background-color: white; padding: 1rem; border-radius: 0.75rem; shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); border: 1px solid; }
+/* ... 保持你原有的 CSS 不变，把下面这些加到最后 ... */
+
+/* --- 📱 手机端适配专用样式 --- */
+
+/* 底部导航栏 */
+.mobile-nav-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 3.5rem; background-color: white; border-top: 1px solid #e2e8f0;
+    display: flex; justify-content: space-around; align-items: center;
+    z-index: 40; padding-bottom: env(safe-area-inset-bottom); /* 适配 iPhone 底部横条 */
+}
+
+.mobile-nav-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; color: #94a3b8; font-size: 0.65rem; font-weight: 600; gap: 2px;
+}
+
+.mobile-nav-item i { font-size: 1.5rem; margin-bottom: -2px; }
+.mobile-nav-item.active { color: #2563eb; }
+
+/* 手机端弹窗优化：从底部滑出 */
+@media (max-width: 768px) {
+    .modal-container {
+        position: absolute; bottom: 0; left: 0; right: 0; top: auto !important;
+        border-radius: 1.5rem 1.5rem 0 0 !important;
+        max-height: 85vh !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        animation: slideUp 0.3s ease-out;
+    }
+    
+    /* 隐藏右侧详情页，手机端太窄放不下 */
+    aside.hidden-on-mobile { display: none !important; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
