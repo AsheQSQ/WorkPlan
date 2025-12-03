@@ -34,9 +34,13 @@ createApp({
             activeTask: null,
             modal: { show: false, isEdit: false, data: {} },
             isAllExpanded: false,
+
+            // 统计相关数据
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
             statsStatus: 'all',
+            statsRangeType: 'week', // 🟢 新增：记录当前选中的时间类型
+
             draggingIndex: null
         }
     },
@@ -82,11 +86,28 @@ createApp({
         },
         overdueCount() { return this.tasks.filter(t => t.status !== 'done' && this.isOverdue(t)).length; },
         enabledScheduledCount() { return this.scheduledTasks.filter(t => t.enabled).length; },
+
+        // 🟢 修改后的统计逻辑
         statsData() {
             const start = this.statsStart;
             const end = this.statsEnd;
-            let list = this.tasks.filter(t => { const d = t.date.split('T')[0]; return d >= start && d <= end; });
-            if (this.statsStatus !== 'all') { list = list.filter(t => t.status === this.statsStatus); }
+
+            // 1. 时间筛选
+            let list = this.tasks.filter(t => {
+                const d = t.date.split('T')[0];
+                return d >= start && d <= end;
+            });
+
+            // 2. 状态筛选
+            if (this.statsStatus === 'incomplete') {
+                // 未完成 = 待办 + 进行中
+                list = list.filter(t => t.status === 'todo' || t.status === 'doing');
+            } else if (this.statsStatus !== 'all') {
+                // 其他单选状态
+                list = list.filter(t => t.status === this.statsStatus);
+            }
+
+            // 排序与计算
             list.sort((a, b) => new Date(b.date) - new Date(a.date));
             const total = list.length;
             const doneList = list.filter(t => t.status === 'done');
@@ -128,14 +149,14 @@ createApp({
                 } else {
                     console.log("新用户或无云端数据"); this.isSyncing = 'idle';
                 }
-                this.checkScheduledTasks(); // 加载后立即检查定时任务
+                this.checkScheduledTasks();
             } catch (e) { console.error(e); this.isSyncing = 'error'; }
         },
 
         saveData() {
             if (!this.accessKey) return;
             const currentPureStr = getPureDataString({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks });
-            if (currentPureStr === this.lastCloudStr) return; // 数据无实质变化，跳过保存
+            if (currentPureStr === this.lastCloudStr) return;
 
             this.isSyncing = 'syncing';
             if (this.saveTimer) clearTimeout(this.saveTimer);
@@ -151,10 +172,9 @@ createApp({
                     this.isSyncing = 'done';
                     setTimeout(() => { if (this.isSyncing === 'done') this.isSyncing = 'idle'; }, 3000);
                 }
-            }, 2000); // 2秒防抖
+            }, 2000);
         },
 
-        // 业务逻辑
         checkScheduledTasks() {
             const todayDate = new Date(this.today); let addedCount = 0;
             this.scheduledTasks.forEach(sch => {
@@ -173,7 +193,43 @@ createApp({
             if (addedCount > 0) this.saveData();
         },
 
-        // 通用工具
+        // 🟢 修改后的时间筛选逻辑
+        setStatsRange(type) {
+            this.statsRangeType = type;
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            const day = d.getDay() || 7;
+
+            if (type === 'today') {
+                this.statsStart = this.statsEnd = this.today;
+            }
+            else if (type === 'yesterday') {
+                d.setDate(d.getDate() - 1);
+                this.statsStart = this.statsEnd = d.toISOString().split('T')[0];
+            }
+            else if (type === 'week') {
+                d.setDate(d.getDate() - day + 1);
+                this.statsStart = d.toISOString().split('T')[0];
+                d.setDate(d.getDate() + 6);
+                this.statsEnd = d.toISOString().split('T')[0];
+            }
+            else if (type === 'lastWeek') {
+                d.setDate(d.getDate() - day - 6);
+                this.statsStart = d.toISOString().split('T')[0];
+                d.setDate(d.getDate() + 6);
+                this.statsEnd = d.toISOString().split('T')[0];
+            }
+            else if (type === 'month') {
+                this.statsStart = new Date(y, m, 1, 12).toISOString().split('T')[0];
+                this.statsEnd = new Date(y, m + 1, 0, 12).toISOString().split('T')[0];
+            }
+            else if (type === 'lastMonth') {
+                this.statsStart = new Date(y, m - 1, 1, 12).toISOString().split('T')[0];
+                this.statsEnd = new Date(y, m, 0, 12).toISOString().split('T')[0];
+            }
+        },
+
         handleClearData() { if (confirm(`⚠️ 警告：删除 [${this.accessKey}] 所有数据？`)) { supabase.from('user_data').delete().eq('my_key', this.accessKey).then(() => location.reload()); } },
         exportData() { const blob = new Blob([JSON.stringify({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${this.today}.json`; a.click(); },
         importData(event) {
@@ -183,11 +239,9 @@ createApp({
             }; reader.readAsText(file);
         },
 
-        // 交互逻辑
         dragStart(i, e) { this.draggingIndex = i; }, dragDrop(to) { const arr = this.modal.data.subtasks; const item = arr.splice(this.draggingIndex, 1)[0]; arr.splice(to, 0, item); },
         toggleSubtask(task, sub) { sub.status = sub.status === 'done' ? 'todo' : 'done'; if (sub.status === 'done' && task.status === 'todo') { task.status = 'doing'; this.updateStatus(task); } },
         updateStatus(task) { const now = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16); if (task.status === 'doing') { if (!task.startTime) task.startTime = now; task.completedDate = null; } else if (task.status === 'done') { task.completedDate = now; if (task.subtasks) task.subtasks.forEach(s => s.status = 'done'); } else { task.startTime = null; task.completedDate = null; } },
-        setStatsRange(type) { const d = new Date(); if (type === 'week') { const day = d.getDay() || 7; if (day !== 1) d.setHours(-24 * (day - 1)); this.statsStart = d.toISOString().split('T')[0]; d.setDate(d.getDate() + 6); this.statsEnd = d.toISOString().split('T')[0]; } else { const y = d.getFullYear(), m = d.getMonth(); this.statsStart = new Date(y, m, 1, 12).toISOString().split('T')[0]; this.statsEnd = new Date(y, m + 1, 0, 12).toISOString().split('T')[0]; } },
         changeDate(off) { const d = new Date(this.viewDate); d.setDate(d.getDate() + off); this.viewDate = d.toISOString().split('T')[0]; this.activeTask = null; },
         resetToToday() { this.viewDate = this.today; this.checkScheduledTasks(); },
         switchView(view) { this.currentView = view; this.activeTask = null; if (view === 'dashboard') { this.viewDate = this.today; this.checkScheduledTasks(); } },

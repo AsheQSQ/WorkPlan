@@ -209,14 +209,39 @@
                     </div>
                 </template>
 
-                <!-- View D: 数据统计 (恢复完整版) -->
+                <!-- View D: 数据统计 (已更新筛选功能) -->
                 <template v-if="currentView === 'statistics'">
-                    <header class="h-16 bg-white/90 backdrop-blur px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
+                    <header class="h-auto md:h-16 bg-white/90 backdrop-blur px-4 md:px-6 flex flex-col md:flex-row justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0 py-2 gap-2">
                         <div><h2 class="text-lg font-bold text-indigo-800">数据统计</h2></div>
-                        <div class="flex items-center gap-2">
-                            <select v-model="statsStatus" class="text-xs border border-slate-200 rounded px-2 py-1 outline-none bg-white text-slate-600"><option value="all">全部</option><option value="done">已完成</option></select>
-                            <button @click="setStatsRange('week')" class="px-3 py-1 text-xs bg-white border border-slate-200 rounded hover:bg-slate-50">本周</button>
-                            <button @click="setStatsRange('month')" class="px-3 py-1 text-xs bg-white border border-slate-200 rounded hover:bg-slate-50">本月</button>
+
+                        <div class="flex flex-wrap items-center gap-2 justify-center">
+                            <!-- 1. 状态筛选：增加了“未完成”选项 -->
+                            <select v-model="statsStatus" class="text-xs border border-slate-200 rounded px-2 py-1.5 outline-none bg-white text-slate-600 font-bold">
+                                <option value="all">全部状态</option>
+                                <option value="done">已完成</option>
+                                <option value="incomplete">未完成 (未开始+进行中)</option>
+                                <option value="doing">进行中</option>
+                                <option value="todo">未开始</option>
+                            </select>
+
+                            <div class="h-4 w-px bg-slate-200 hidden md:block"></div>
+
+                            <!-- 2. 快捷时间按钮：增加了昨日、上周、上月 -->
+                            <div class="flex bg-slate-100 p-1 rounded-lg gap-1 overflow-x-auto max-w-[200px] md:max-w-none scrollbar-hide">
+                                <button @click="setStatsRange('today')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='today'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">今日</button>
+                                <button @click="setStatsRange('yesterday')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='yesterday'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">昨日</button>
+                                <button @click="setStatsRange('week')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='week'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">本周</button>
+                                <button @click="setStatsRange('lastWeek')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='lastWeek'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">上周</button>
+                                <button @click="setStatsRange('month')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='month'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">本月</button>
+                                <button @click="setStatsRange('lastMonth')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='lastMonth'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">上月</button>
+                            </div>
+
+                            <!-- 3. 自定义时间：通过原生 Date Input 实现 -->
+                            <div class="flex items-center gap-1 bg-white border border-slate-200 rounded-md px-2 py-0.5">
+                                <input type="date" v-model="statsStart" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-20">
+                                <span class="text-slate-300">-</span>
+                                <input type="date" v-model="statsEnd" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-20">
+                            </div>
                         </div>
                     </header>
                     <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-20">
@@ -246,7 +271,7 @@
                 </template>
             </main>
 
-            <!-- 右侧详情栏 (恢复！) -->
+            <!-- 右侧详情栏 (已更新显示开始/截止时间) -->
             <aside class="hidden md:flex w-[350px] bg-white border-l border-slate-200 flex-col z-10 shrink-0 h-full shadow-[-4px_0_15px_rgba(0,0,0,0.02)]">
                 <div class="h-16 border-b border-slate-100 flex items-center px-6 bg-slate-50/80">
                     <h3 class="font-bold text-slate-700 flex items-center gap-2"><i class="ph ph-sliders-horizontal"></i> 任务详情</h3>
@@ -271,8 +296,22 @@
                         </ul>
                     </div>
                     <div class="border-t border-slate-100 pt-4 grid grid-cols-2 gap-4 text-xs">
-                        <div><div class="text-slate-400 mb-1">计划</div><div class="font-bold text-slate-700">{{ formatDateTime(activeTask.date) }}</div></div>
-                        <div><div class="text-slate-400 mb-1">截止</div><div class="font-bold" :class="isOverdue(activeTask)?'text-red-500':'text-slate-700'">{{ formatDateTime(activeTask.deadline) || '-' }}</div></div>
+                        <div>
+                            <div class="text-slate-400 mb-1">计划日期</div>
+                            <div class="font-bold text-slate-700">{{ formatDateTime(activeTask.date) }}</div>
+                        </div>
+                        <div>
+                            <div class="text-slate-400 mb-1">截止时间</div>
+                            <div class="font-bold" :class="isOverdue(activeTask)?'text-red-500':'text-slate-700'">{{ formatDateTime(activeTask.deadline) || '-' }}</div>
+                        </div>
+                        <div>
+                            <div class="text-slate-400 mb-1">开始时间</div>
+                            <div class="font-bold text-blue-600">{{ activeTask.startTime ? formatDateTime(activeTask.startTime) : '-' }}</div>
+                        </div>
+                        <div>
+                            <div class="text-slate-400 mb-1">完成时间</div>
+                            <div class="font-bold text-green-600">{{ activeTask.completedDate ? formatDateTime(activeTask.completedDate) : '-' }}</div>
+                        </div>
                     </div>
                 </div>
                 <div v-else class="h-full flex flex-col items-center justify-center text-center opacity-40 p-10"><i class="ph ph-hand-tap text-5xl text-slate-300 mb-4"></i><h4 class="font-bold text-slate-600 text-lg">点击列表项</h4></div>
