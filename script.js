@@ -5,11 +5,14 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const { createApp } = Vue;
 
-// 辅助工具：提取纯净数据 (用于对比是否真正变化，避免无限循环保存)
+// 辅助工具：提取纯净数据
 const getPureDataString = (data) => {
     const copy = JSON.parse(JSON.stringify(data));
     ['tasks', 'templates', 'scheduledTasks'].forEach(key => {
-        if (copy[key]) copy[key].forEach(item => { delete item.expanded; delete item.isFromSchedule; });
+        if (copy[key]) copy[key].forEach(item => {
+            delete item.expanded;
+            delete item.isFromSchedule;
+        });
     });
     return JSON.stringify(copy);
 };
@@ -25,12 +28,19 @@ createApp({
             isSyncing: 'idle',
             saveTimer: null,
 
+            // AI 相关
+            aiInput: '',
+            chatHistory: [],
+            showAiPanel: false, // 控制面板显示状态
+
             // 业务数据
             today: new Date().toISOString().split('T')[0],
             viewDate: new Date().toISOString().split('T')[0],
             now: new Date(),
             currentView: 'dashboard',
-            tasks: [], templates: [], scheduledTasks: [],
+            tasks: [],
+            templates: [],
+            scheduledTasks: [],
             activeTask: null,
             modal: { show: false, isEdit: false, data: {} },
             isAllExpanded: false,
@@ -39,8 +49,7 @@ createApp({
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
             statsStatus: 'all',
-            statsRangeType: 'week', // 记录当前选中的时间类型
-
+            statsRangeType: 'week',
             draggingIndex: null
         }
     },
@@ -51,7 +60,10 @@ createApp({
             if (this.isSyncing === 'error') return { text: '同步失败', class: 'bg-red-50 text-red-600 border-red-200', icon: 'ph-bold ph-warning' };
             return { text: '就绪', class: 'bg-slate-50 text-slate-400 border-slate-200', icon: 'ph ph-cloud' };
         },
-        dateInfo() { const date = new Date(this.viewDate); return { date: date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' }), week: date.toLocaleDateString('zh-CN', { weekday: 'long' }) }; },
+        dateInfo() {
+            const date = new Date(this.viewDate);
+            return { date: date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' }), week: date.toLocaleDateString('zh-CN', { weekday: 'long' }) };
+        },
         futurePreviews() {
             if (this.viewDate <= this.today) return [];
             const targetDay = new Date(this.viewDate).getDay();
@@ -86,32 +98,15 @@ createApp({
         },
         overdueCount() { return this.tasks.filter(t => t.status !== 'done' && this.isOverdue(t)).length; },
         enabledScheduledCount() { return this.scheduledTasks.filter(t => t.enabled).length; },
-
-        // 统计逻辑
         statsData() {
             const start = this.statsStart;
             const end = this.statsEnd;
-
-            // 1. 时间筛选
-            let list = this.tasks.filter(t => {
-                const d = t.date.split('T')[0];
-                return d >= start && d <= end;
-            });
-
-            // 2. 状态筛选
-            if (this.statsStatus === 'incomplete') {
-                // 未完成 = 待办 + 进行中
-                list = list.filter(t => t.status === 'todo' || t.status === 'doing');
-            } else if (this.statsStatus !== 'all') {
-                // 其他单选状态
-                list = list.filter(t => t.status === this.statsStatus);
-            }
-
-            // 排序与计算
+            let list = this.tasks.filter(t => { const d = t.date.split('T')[0]; return d >= start && d <= end; });
+            if (this.statsStatus === 'incomplete') { list = list.filter(t => t.status === 'todo' || t.status === 'doing'); }
+            else if (this.statsStatus !== 'all') { list = list.filter(t => t.status === this.statsStatus); }
             list.sort((a, b) => new Date(b.date) - new Date(a.date));
             const total = list.length;
-            const doneList = list.filter(t => t.status === 'done');
-            const done = doneList.length;
+            const done = list.filter(t => t.status === 'done').length;
             const doing = list.filter(t => t.status === 'doing').length;
             const todo = list.filter(t => t.status === 'todo').length;
             const rate = total > 0 ? ((done / total) * 100).toFixed(1) : 0;
@@ -193,7 +188,6 @@ createApp({
             if (addedCount > 0) this.saveData();
         },
 
-        // 时间筛选逻辑
         setStatsRange(type) {
             this.statsRangeType = type;
             const d = new Date();
@@ -201,33 +195,12 @@ createApp({
             const m = d.getMonth();
             const day = d.getDay() || 7;
 
-            if (type === 'today') {
-                this.statsStart = this.statsEnd = this.today;
-            }
-            else if (type === 'yesterday') {
-                d.setDate(d.getDate() - 1);
-                this.statsStart = this.statsEnd = d.toISOString().split('T')[0];
-            }
-            else if (type === 'week') {
-                d.setDate(d.getDate() - day + 1);
-                this.statsStart = d.toISOString().split('T')[0];
-                d.setDate(d.getDate() + 6);
-                this.statsEnd = d.toISOString().split('T')[0];
-            }
-            else if (type === 'lastWeek') {
-                d.setDate(d.getDate() - day - 6);
-                this.statsStart = d.toISOString().split('T')[0];
-                d.setDate(d.getDate() + 6);
-                this.statsEnd = d.toISOString().split('T')[0];
-            }
-            else if (type === 'month') {
-                this.statsStart = new Date(y, m, 1, 12).toISOString().split('T')[0];
-                this.statsEnd = new Date(y, m + 1, 0, 12).toISOString().split('T')[0];
-            }
-            else if (type === 'lastMonth') {
-                this.statsStart = new Date(y, m - 1, 1, 12).toISOString().split('T')[0];
-                this.statsEnd = new Date(y, m, 0, 12).toISOString().split('T')[0];
-            }
+            if (type === 'today') { this.statsStart = this.statsEnd = this.today; }
+            else if (type === 'yesterday') { d.setDate(d.getDate() - 1); this.statsStart = this.statsEnd = d.toISOString().split('T')[0]; }
+            else if (type === 'week') { d.setDate(d.getDate() - day + 1); this.statsStart = d.toISOString().split('T')[0]; d.setDate(d.getDate() + 6); this.statsEnd = d.toISOString().split('T')[0]; }
+            else if (type === 'lastWeek') { d.setDate(d.getDate() - day - 6); this.statsStart = d.toISOString().split('T')[0]; d.setDate(d.getDate() + 6); this.statsEnd = d.toISOString().split('T')[0]; }
+            else if (type === 'month') { this.statsStart = new Date(y, m, 1, 12).toISOString().split('T')[0]; this.statsEnd = new Date(y, m + 1, 0, 12).toISOString().split('T')[0]; }
+            else if (type === 'lastMonth') { this.statsStart = new Date(y, m - 1, 1, 12).toISOString().split('T')[0]; this.statsEnd = new Date(y, m, 0, 12).toISOString().split('T')[0]; }
         },
 
         handleClearData() { if (confirm(`⚠️ 警告：删除 [${this.accessKey}] 所有数据？`)) { supabase.from('user_data').delete().eq('my_key', this.accessKey).then(() => location.reload()); } },
@@ -239,13 +212,27 @@ createApp({
             }; reader.readAsText(file);
         },
 
-        dragStart(i, e) { this.draggingIndex = i; }, dragDrop(to) { const arr = this.modal.data.subtasks; const item = arr.splice(this.draggingIndex, 1)[0]; arr.splice(to, 0, item); },
+        dragStart(i, e) { this.draggingIndex = i; },
+        dragDrop(to) { const arr = this.modal.data.subtasks; const item = arr.splice(this.draggingIndex, 1)[0]; arr.splice(to, 0, item); },
         toggleSubtask(task, sub) { sub.status = sub.status === 'done' ? 'todo' : 'done'; if (sub.status === 'done' && task.status === 'todo') { task.status = 'doing'; this.updateStatus(task); } },
         updateStatus(task) { const now = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16); if (task.status === 'doing') { if (!task.startTime) task.startTime = now; task.completedDate = null; } else if (task.status === 'done') { task.completedDate = now; if (task.subtasks) task.subtasks.forEach(s => s.status = 'done'); } else { task.startTime = null; task.completedDate = null; } },
         changeDate(off) { const d = new Date(this.viewDate); d.setDate(d.getDate() + off); this.viewDate = d.toISOString().split('T')[0]; this.activeTask = null; },
         resetToToday() { this.viewDate = this.today; this.checkScheduledTasks(); },
         switchView(view) { this.currentView = view; this.activeTask = null; if (view === 'dashboard') { this.viewDate = this.today; this.checkScheduledTasks(); } },
-        selectTask(task) { this.activeTask = task; },
+        
+        // ⭐⭐ 关键修复：添加了 toggleAiPanel 方法 ⭐⭐
+        toggleAiPanel() {
+            this.showAiPanel = !this.showAiPanel;
+            if (this.showAiPanel) {
+                // 打开 AI 时，清空当前选中的任务，避免界面重叠
+                this.activeTask = null;
+            }
+        },
+
+        selectTask(task) { 
+            this.showAiPanel = false; // 选中任务时自动关闭 AI
+            this.activeTask = task; 
+        },
         toggleAll() { this.isAllExpanded = !this.isAllExpanded; this.activeTasks.forEach(t => t.expanded = this.isAllExpanded); },
         deleteTask(id) { if (confirm('确定删除？')) { if (this.currentView === 'dashboard') this.tasks = this.tasks.filter(t => t.id !== id); else if (this.currentView === 'templates') this.templates = this.templates.filter(t => t.id !== id); else this.scheduledTasks = this.scheduledTasks.filter(t => t.id !== id); if (this.activeTask?.id === id) this.activeTask = null; } },
         loadTemplate(e) { const t = this.templates.find(x => x.id === e.target.value); if (t) { this.modal.data.title = t.title; this.modal.data.priority = t.priority; this.modal.data.subtasks = JSON.parse(JSON.stringify(t.subtasks)); } e.target.value = ''; },
@@ -261,6 +248,111 @@ createApp({
         formatTimeOnly(d) { return d && d.includes('T') ? d.split('T')[1] : ''; },
         formatDateTime(d) { return d ? d.replace('T', ' ') : ''; },
         getStatsStatusStyle(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700') : (t.status === 'doing' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'); },
-        getStatsStatusLabel(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? '超时完成' : '已完成') : { 'todo': '未开始', 'doing': '进行中' }[t.status]; }
+        getStatsStatusLabel(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? '超时完成' : '已完成') : { 'todo': '未开始', 'doing': '进行中' }[t.status]; },
+
+        // === AI 助手核心逻辑 ===
+
+        async sendAiMessage() {
+            const text = this.aiInput.trim();
+            if (!text) return;
+
+            // 添加用户消息
+            this.chatHistory.push({ role: 'user', type: 'text', content: text });
+            this.aiInput = '';
+
+            // 添加加载状态
+            this.chatHistory.push({ role: 'assistant', type: 'loading' });
+            this.$nextTick(() => this.scrollToBottom());
+
+            try {
+                const result = await this.analyzeAiIntent(text);
+
+                // 移除加载状态
+                this.chatHistory.pop();
+
+                if (result) {
+                    this.chatHistory.push({
+                        role: 'assistant',
+                        type: 'task_card',
+                        data: result,
+                        confirmed: false
+                    });
+                } else {
+                    this.chatHistory.push({
+                        role: 'assistant',
+                        type: 'text',
+                        content: 'AI 无法生成有效的任务数据。请描述得更具体一点（包含时间、要做什么）。'
+                    });
+                }
+            } catch (error) {
+                this.chatHistory.pop(); // 移除加载
+                console.error(error);
+                this.chatHistory.push({
+                    role: 'assistant',
+                    type: 'text',
+                    content: `出错了: ${error.message}`
+                });
+            }
+
+            this.$nextTick(() => this.scrollToBottom());
+        },
+
+        // 确认添加
+        confirmAiTask(taskData, msgIndex) {
+            this.tasks.push(taskData);
+            this.saveData(); 
+
+            // 更新卡片状态
+            this.chatHistory[msgIndex].confirmed = true;
+
+            // 发送成功提示
+            this.chatHistory.push({
+                role: 'assistant',
+                type: 'text',
+                content: `✅ 任务 "${taskData.title}" 已成功添加到列表！`
+            });
+            this.$nextTick(() => this.scrollToBottom());
+        },
+
+        scrollToBottom() {
+            const container = this.$refs.chatContainer || this.$refs.chatContainerMobile;
+            if (container) container.scrollTop = container.scrollHeight;
+        },
+
+        async analyzeAiIntent(userText) {
+            const MY_API_KEY = 'AIzaSyAAiJbcM0nREVQFd8V-bqFlfjzlArYa90M'; 
+            
+            // ⭐ 修正：gemini-2.5 尚未发布，改回稳定的 1.5 版本
+            const MY_MODEL_NAME = 'models/gemini-2.5-flash';
+
+            let cleanModelName = MY_MODEL_NAME.startsWith('models/') ? MY_MODEL_NAME : `models/${MY_MODEL_NAME}`;
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/${cleanModelName}:generateContent?key=${MY_API_KEY}`;
+
+            const now = new Date();
+            const systemPrompt = `你是一个任务管理助手。当前时间：${now.toLocaleString('zh-CN', { hour12: false })}。严格返回JSON：{"title":"标题","date":"YYYY-MM-DDTHH:mm","priority":"normal/urgent","note":"备注"}`;
+
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n用户输入: " + userText }] }] })
+            });
+
+            if (!response.ok) throw new Error('API 请求失败');
+            const data = await response.json();
+            let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!rawText) return null;
+
+            // 清理 markdown 标记
+            const parsed = JSON.parse(rawText.replace(/```json/g, '').replace(/```/g, '').trim());
+            return {
+                id: Date.now().toString(),
+                title: parsed.title,
+                date: parsed.date,
+                status: 'todo',
+                priority: parsed.priority || 'normal',
+                subtasks: [],
+                note: parsed.note || ''
+            };
+        }
     }
 }).mount('#app');
