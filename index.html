@@ -16,7 +16,7 @@
 
     <div id="app" v-cloak class="h-screen flex flex-col md:flex-row overflow-hidden text-slate-800">
 
-        <!-- === 1. 登录层 (没有 Key 时显示) === -->
+        <!-- === 1. 登录层 (保持不变) === -->
         <div v-if="!accessKey" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-100/50 backdrop-blur-sm p-4 mobile-modal-container">
             <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border border-white mobile-bottom-sheet">
                 <div class="text-center mb-8">
@@ -42,7 +42,7 @@
         <!-- === 2. 主界面 (有 Key 时显示) === -->
         <template v-if="accessKey">
 
-            <!-- 左侧导航 (桌面端显示，移动端隐藏) -->
+            <!-- 左侧导航 (桌面端) -->
             <aside class="hidden md:flex w-64 bg-white border-r border-slate-200 flex-col z-20 shadow-lg shrink-0">
                 <div class="p-6 flex items-center gap-3 border-b border-slate-100 h-16">
                     <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-md"><i class="ph ph-check-square-offset text-xl"></i></div>
@@ -52,7 +52,6 @@
                     </div>
                 </div>
 
-                <!-- 同步状态 -->
                 <div class="px-6 py-2">
                     <div class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border transition-colors" :class="syncStatus.class">
                         <i :class="syncStatus.icon"></i><span class="font-bold">{{ syncStatus.text }}</span>
@@ -92,14 +91,11 @@
                 <!-- View A: 今日看板 -->
                 <template v-if="currentView === 'dashboard'">
                     <header class="h-16 bg-white/90 backdrop-blur px-2 md:px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0 gap-2">
-
-                        <!-- 修改1: 左侧显示标题，颜色统一为蓝色 -->
                         <div class="shrink-0">
                             <h2 class="text-lg font-bold text-blue-800">今日看板</h2>
                             <div class="text-[10px] text-slate-400 hidden md:block">管理您的每日待办</div>
                         </div>
 
-                        <!-- 修改1: 日期移动到中间 -->
                         <div class="flex items-center justify-center gap-1 md:gap-3 flex-1 min-w-0 overflow-hidden">
                             <button @click="changeDate(-1)" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 text-slate-600"><i class="ph-bold ph-caret-left"></i></button>
                             <div class="flex flex-col items-center">
@@ -113,113 +109,63 @@
                             <button v-if="viewDate !== today" @click="resetToToday" class="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold whitespace-nowrap shrink-0">今</button>
                         </div>
 
-                        <!-- 右侧操作按钮 -->
                         <div class="flex items-center gap-1 shrink-0">
                             <button @click="toggleAll" class="h-8 w-8 md:h-9 md:w-auto md:px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium flex items-center justify-center gap-2 shrink-0">
                                 <i :class="isAllExpanded ? 'ph ph-arrows-in-line-vertical' : 'ph ph-arrows-out-line-vertical'"></i>
                                 <span class="hidden md:inline">{{ isAllExpanded ? '收起' : '展开' }}</span>
                             </button>
-                            <!-- 修改2: 新建按钮改为蓝色 (bg-blue-600) -->
+                            <!-- ⭐ 新增 AI 按钮 -->
+                            <button @click="toggleAiPanel" class="h-9 px-3 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-sm font-bold flex items-center gap-1 border border-rose-100 transition-colors">
+                                <i class="ph-fill ph-sparkle"></i> <span class="hidden md:inline">AI</span>
+                            </button>
                             <button @click="openModal()" class="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-200 flex items-center gap-2"><i class="ph ph-plus-bold"></i>新建</button>
                         </div>
                     </header>
 
-                    <!-- 修改4: 增加 pb-32 解决手机端无法滚动到底部的问题 -->
                     <div class="flex-1 overflow-y-auto p-4 space-y-3 scroll-smooth pb-32">
-                        <!-- 预览区 -->
+                        <!-- 预览区、空状态、任务列表逻辑保持不变 (为节省篇幅省略重复代码，逻辑与之前完全一致) -->
                         <div v-if="futurePreviews.length > 0" class="mb-6">
                             <h3 class="text-xs font-bold text-teal-600 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="ph-fill ph-calendar-plus"></i> 待自动生成 <div class="h-px bg-teal-100 flex-1"></div></h3>
-                            <div v-for="task in futurePreviews" :key="task.id" @click="selectTask(task)" class="task-card future-card bg-slate-50 rounded-xl shadow-sm border border-slate-200 p-3 flex items-center gap-3 cursor-pointer">
-                                <div class="w-6 flex justify-center text-slate-300"><i class="ph-bold ph-clock-countdown text-lg"></i></div>
-                                <div class="font-bold text-slate-600 text-sm">{{ task.title }}</div>
-                            </div>
+                            <div v-for="task in futurePreviews" :key="task.id" @click="selectTask(task)" class="task-card future-card bg-slate-50 rounded-xl shadow-sm border border-slate-200 p-3 flex items-center gap-3 cursor-pointer"><div class="w-6 flex justify-center text-slate-300"><i class="ph-bold ph-clock-countdown text-lg"></i></div><div class="font-bold text-slate-600 text-sm">{{ task.title }}</div></div>
                         </div>
 
-                        <!-- 空状态 -->
                         <div v-if="activeTasks.length === 0 && completedTasks.length === 0 && futurePreviews.length === 0" class="flex flex-col items-center justify-center h-64 text-slate-400"><i class="ph ph-coffee text-4xl mb-2"></i><p class="text-sm">今日无任务</p></div>
 
-                        <!-- 进行中任务列表 -->
                         <div v-for="task in activeTasks" :key="task.id" @click="selectTask(task)" class="task-card bg-white rounded-xl shadow-sm border border-slate-200 relative overflow-hidden cursor-pointer group" :class="{'active': activeTask && activeTask.id === task.id}">
                             <div v-if="isOverdue(task)" class="absolute top-0 left-0 right-0 h-1 bg-red-500 z-10"></div>
                             <div class="p-3 flex items-center gap-2 md:gap-3 relative z-0 min-h-[4rem]">
-                                <!-- 展开箭头 -->
                                 <button @click.stop="task.expanded = !task.expanded" class="shrink-0 text-slate-400 w-5 md:w-6" :class="{'rotate-90': task.expanded}"><i class="ph-bold ph-caret-right text-lg"></i></button>
-
-                                <!-- 优先级 -->
                                 <div class="relative w-14 md:w-24 shrink-0" @click.stop>
-                                    <select v-model="task.priority" class="w-full appearance-none px-1 md:pl-7 md:pr-2 py-1.5 rounded-lg text-xs font-bold border bg-white focus:outline-none text-center md:text-left" :class="getPriorityStyle(task.priority)">
-                                        <option value="normal">普通</option>
-                                        <option value="urgent">紧急</option>
-                                        <option value="critical">特急</option>
-                                    </select>
-                                    <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none hidden md:block">
-                                        <i class="ph-fill ph-flag" :class="{'text-blue-500':task.priority==='normal', 'text-orange-500':task.priority==='urgent', 'text-red-500':task.priority==='critical'}"></i>
-                                    </div>
+                                    <select v-model="task.priority" class="w-full appearance-none px-1 md:pl-7 md:pr-2 py-1.5 rounded-lg text-xs font-bold border bg-white focus:outline-none text-center md:text-left" :class="getPriorityStyle(task.priority)"><option value="normal">普通</option><option value="urgent">紧急</option><option value="critical">特急</option></select>
+                                    <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none hidden md:block"><i class="ph-fill ph-flag" :class="{'text-blue-500':task.priority==='normal', 'text-orange-500':task.priority==='urgent', 'text-red-500':task.priority==='critical'}"></i></div>
                                 </div>
-
-                                <!-- 状态 -->
                                 <div class="relative w-16 md:w-28 shrink-0" @click.stop>
-                                    <select v-model="task.status" @change="updateStatus(task)" class="w-full appearance-none px-1 md:pl-7 md:pr-2 py-1.5 rounded-lg text-xs font-bold border bg-white focus:outline-none text-center md:text-left" :class="getStatusStyle(task.status)">
-                                        <option value="todo">未开始</option>
-                                        <option value="doing">进行中</option>
-                                        <option value="done">已完成</option>
-                                    </select>
-                                    <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none hidden md:block">
-                                        <i v-if="task.status==='todo'" class="ph ph-circle text-slate-400"></i>
-                                        <i v-if="task.status==='doing'" class="ph ph-spinner animate-spin text-blue-600"></i>
-                                        <i v-if="task.status==='done'" class="ph ph-check-circle text-green-600"></i>
-                                    </div>
+                                    <select v-model="task.status" @change="updateStatus(task)" class="w-full appearance-none px-1 md:pl-7 md:pr-2 py-1.5 rounded-lg text-xs font-bold border bg-white focus:outline-none text-center md:text-left" :class="getStatusStyle(task.status)"><option value="todo">未开始</option><option value="doing">进行中</option><option value="done">已完成</option></select>
+                                    <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none hidden md:block"><i v-if="task.status==='todo'" class="ph ph-circle text-slate-400"></i><i v-if="task.status==='doing'" class="ph ph-spinner animate-spin text-blue-600"></i><i v-if="task.status==='done'" class="ph ph-check-circle text-green-600"></i></div>
                                 </div>
-
-                                <!-- 标题 (截断) -->
-                                <div class="flex-1 w-0 min-w-0 font-bold text-slate-800 text-sm flex items-center gap-2">
-                                    <span class="truncate block">{{ task.title }}</span>
-                                    <span class="text-[10px] font-normal text-slate-400 font-mono bg-slate-100 px-1 rounded hidden md:inline shrink-0">{{ formatTimeOnly(task.date) }}</span>
-                                </div>
-
-                                <!-- 备注 (电脑端) -->
+                                <div class="flex-1 w-0 min-w-0 font-bold text-slate-800 text-sm flex items-center gap-2"><span class="truncate block">{{ task.title }}</span><span class="text-[10px] font-normal text-slate-400 font-mono bg-slate-100 px-1 rounded hidden md:inline shrink-0">{{ formatTimeOnly(task.date) }}</span></div>
                                 <div class="flex-1 min-w-0 border-l border-slate-200 pl-3 ml-1 hidden md:block"><div v-if="task.note" class="text-xs text-slate-400 truncate font-mono">{{ getLatestNoteLine(task.note) }}</div></div>
-
-                                <!-- 操作按钮 -->
-                                <div class="flex items-center gap-1 shrink-0 ml-1">
-                                    <button @click.stop="openModal(task)" class="p-1.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded"><i class="ph ph-pencil-simple text-lg"></i></button>
-                                    <button @click.stop="deleteTask(task.id)" class="p-1.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded"><i class="ph ph-trash text-lg"></i></button>
-                                </div>
+                                <div class="flex items-center gap-1 shrink-0 ml-1"><button @click.stop="openModal(task)" class="p-1.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded"><i class="ph ph-pencil-simple text-lg"></i></button><button @click.stop="deleteTask(task.id)" class="p-1.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded"><i class="ph ph-trash text-lg"></i></button></div>
                             </div>
-
-                            <!-- 展开的子任务 -->
                             <transition name="slide">
                                 <div v-if="task.expanded" class="bg-slate-50 border-t border-slate-100 px-4 py-3 ml-[0] md:ml-[3.5rem]" @click.stop>
                                     <div class="space-y-2">
-                                        <div v-for="(sub, idx) in task.subtasks" :key="idx" class="flex items-start gap-2">
-                                            <label class="flex items-center gap-2 cursor-pointer select-none flex-1">
-                                                <input type="checkbox" :checked="sub.status === 'done'" @change="toggleSubtask(task, sub)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                                <span class="text-sm text-slate-700 transition-all" :class="{'line-through text-slate-400': sub.status === 'done'}">{{ sub.title }}</span>
-                                            </label>
-                                            <button @click="task.subtasks.splice(idx,1)" class="text-slate-300 hover:text-red-500"><i class="ph ph-x"></i></button>
-                                        </div>
+                                        <div v-for="(sub, idx) in task.subtasks" :key="idx" class="flex items-start gap-2"><label class="flex items-center gap-2 cursor-pointer select-none flex-1"><input type="checkbox" :checked="sub.status === 'done'" @change="toggleSubtask(task, sub)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"><span class="text-sm text-slate-700 transition-all" :class="{'line-through text-slate-400': sub.status === 'done'}">{{ sub.title }}</span></label><button @click="task.subtasks.splice(idx,1)" class="text-slate-300 hover:text-red-500"><i class="ph ph-x"></i></button></div>
                                         <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200 border-dashed"><i class="ph ph-plus text-slate-400 text-xs"></i><input type="text" placeholder="添加子步骤..." @keydown.enter="addInlineSubtask(task, $event)" class="bg-transparent text-xs w-full focus:outline-none text-slate-600 placeholder-slate-400"></div>
                                     </div>
                                 </div>
                             </transition>
                         </div>
-
-                        <!-- 已完成任务 -->
                         <div v-if="completedTasks.length > 0" class="pt-8 pb-4">
                             <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="ph-bold ph-archive"></i> 已完成 <div class="h-px bg-slate-200 flex-1"></div></h3>
-                            <div class="space-y-2">
-                                <div v-for="task in completedTasks" :key="task.id" @click="selectTask(task)" class="task-card bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:bg-white transition-all" :class="{'active': activeTask && activeTask.id === task.id, 'opacity-60 grayscale': (!activeTask || activeTask.id !== task.id)}">
-                                    <button @click.stop="task.status = 'doing'; updateStatus(task)" class="text-green-600 hover:text-green-700"><i class="ph-fill ph-check-circle text-xl"></i></button>
-                                    <div class="flex-1"><div class="text-sm line-through text-slate-500 font-medium">{{ task.title }}</div></div>
-                                </div>
-                            </div>
+                            <div class="space-y-2"><div v-for="task in completedTasks" :key="task.id" @click="selectTask(task)" class="task-card bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:bg-white transition-all" :class="{'active': activeTask && activeTask.id === task.id, 'opacity-60 grayscale': (!activeTask || activeTask.id !== task.id)}"><button @click.stop="task.status = 'doing'; updateStatus(task)" class="text-green-600 hover:text-green-700"><i class="ph-fill ph-check-circle text-xl"></i></button><div class="flex-1"><div class="text-sm line-through text-slate-500 font-medium">{{ task.title }}</div></div></div></div>
                         </div>
                     </div>
                 </template>
 
-                <!-- View B: 模板库 -->
+                <!-- 其他视图 (Templates, Scheduled, Statistics) 保持原样 -->
                 <template v-if="currentView === 'templates'">
-                    <header class="h-16 bg-white/90 backdrop-blur px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
+                     <header class="h-16 bg-white/90 backdrop-blur px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
                         <div><h2 class="text-lg font-bold text-purple-800">任务模板库</h2><div class="text-xs text-slate-500">预设常用任务</div></div>
                         <button @click="openModal()" class="h-9 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold shadow-md shadow-purple-200 flex items-center gap-2"><i class="ph ph-plus-bold"></i>新建</button>
                     </header>
@@ -232,7 +178,6 @@
                     </div>
                 </template>
 
-                <!-- View C: 定时任务 -->
                 <template v-if="currentView === 'scheduled'">
                     <header class="h-16 bg-white/90 backdrop-blur px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
                         <div><h2 class="text-lg font-bold text-teal-800">定时任务</h2><div class="text-xs text-slate-500">自动重复生成的任务</div></div>
@@ -250,23 +195,12 @@
                     </div>
                 </template>
 
-                <!-- View D: 数据统计 -->
                 <template v-if="currentView === 'statistics'">
-                    <header class="h-auto md:h-16 bg-white/90 backdrop-blur px-4 md:px-6 flex flex-col md:flex-row justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0 py-2 gap-2">
+                     <header class="h-auto md:h-16 bg-white/90 backdrop-blur px-4 md:px-6 flex flex-col md:flex-row justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0 py-2 gap-2">
                         <div><h2 class="text-lg font-bold text-indigo-800">数据统计</h2></div>
-
-                        <!-- 修改3: 手机版页面中，数据筛选需要纵向排列 (flex-col md:flex-row) -->
                         <div class="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
-                            <select v-model="statsStatus" class="w-full md:w-auto text-xs border border-slate-200 rounded px-2 py-1.5 outline-none bg-white text-slate-600 font-bold">
-                                <option value="all">全部状态</option>
-                                <option value="done">已完成</option>
-                                <option value="incomplete">未完成 (未开始+进行中)</option>
-                                <option value="doing">进行中</option>
-                                <option value="todo">未开始</option>
-                            </select>
-
+                            <select v-model="statsStatus" class="w-full md:w-auto text-xs border border-slate-200 rounded px-2 py-1.5 outline-none bg-white text-slate-600 font-bold"><option value="all">全部状态</option><option value="done">已完成</option><option value="incomplete">未完成 (未开始+进行中)</option><option value="doing">进行中</option><option value="todo">未开始</option></select>
                             <div class="h-4 w-px bg-slate-200 hidden md:block"></div>
-
                             <div class="w-full md:w-auto flex bg-slate-100 p-1 rounded-lg gap-1 overflow-x-auto justify-center md:justify-start scrollbar-hide">
                                 <button @click="setStatsRange('today')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='today'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">今日</button>
                                 <button @click="setStatsRange('yesterday')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='yesterday'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">昨日</button>
@@ -275,167 +209,169 @@
                                 <button @click="setStatsRange('month')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='month'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">本月</button>
                                 <button @click="setStatsRange('lastMonth')" class="px-2 py-1 text-[10px] rounded hover:bg-white hover:shadow-sm transition whitespace-nowrap" :class="statsRangeType==='lastMonth'?'bg-white shadow-sm font-bold text-indigo-600':'text-slate-500'">上月</button>
                             </div>
-
-                            <div class="w-full md:w-auto flex items-center justify-center gap-1 bg-white border border-slate-200 rounded-md px-2 py-0.5">
-                                <input type="date" v-model="statsStart" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-24 md:w-20 text-center">
-                                <span class="text-slate-300">-</span>
-                                <input type="date" v-model="statsEnd" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-24 md:w-20 text-center">
-                            </div>
+                            <div class="w-full md:w-auto flex items-center justify-center gap-1 bg-white border border-slate-200 rounded-md px-2 py-0.5"><input type="date" v-model="statsStart" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-24 md:w-20 text-center"><span class="text-slate-300">-</span><input type="date" v-model="statsEnd" @change="statsRangeType='custom'" class="text-[10px] outline-none text-slate-500 w-24 md:w-20 text-center"></div>
                         </div>
                     </header>
-
                     <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-32 min-h-0">
-                        <!-- 统计卡片 -->
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100"><div class="text-xs font-bold text-slate-400 uppercase mb-1">总任务</div><div class="text-3xl font-black text-slate-700">{{ statsData.total }}</div></div>
                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100"><div class="text-xs font-bold text-green-500 uppercase mb-1">已完成</div><div class="text-3xl font-black text-green-600">{{ statsData.done }} <span class="text-sm font-medium text-slate-400">({{ statsData.rate }}%)</span></div></div>
                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100"><div class="text-xs font-bold text-blue-500 uppercase mb-1">进行中</div><div class="text-3xl font-black text-blue-600">{{ statsData.doing }}</div></div>
                             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100"><div class="text-xs font-bold text-gray-500 uppercase mb-1">未开始</div><div class="text-3xl font-black text-gray-600">{{ statsData.todo }}</div></div>
                         </div>
-
-                        <!-- 手机端统计视图 (卡片式) -->
                         <div class="md:hidden space-y-3">
                             <div class="px-2 text-xs font-bold text-slate-400">任务明细 ({{ statsStart }} ~ {{ statsEnd }})</div>
                             <div v-if="statsData.list.length === 0" class="text-center py-8 text-slate-400 text-sm">暂无数据</div>
                             <div v-for="t in statsData.list" :key="t.id" @click="selectTask(t)" class="bg-white p-3 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2 active:scale-[0.98] transition-transform">
-                                <div class="flex justify-between items-start">
-                                    <div class="font-bold text-slate-800 text-sm truncate flex-1">{{ t.title }}</div>
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ml-2" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span>
-                                </div>
-                                <div class="flex justify-between items-center text-[10px] text-slate-400">
-                                    <div class="flex gap-2">
-                                        <span :class="{'text-red-500 font-bold': isOverdue(t)}">截止: {{ formatDateTime(t.deadline) || '-' }}</span>
-                                    </div>
-                                    <div class="font-mono">
-                                        <span v-if="t.completedDate" class="text-green-600">完: {{ formatDateTime(t.completedDate).split(' ')[0] }}</span>
-                                        <span v-else class="text-slate-300">未完成</span>
-                                    </div>
-                                </div>
+                                <div class="flex justify-between items-start"><div class="font-bold text-slate-800 text-sm truncate flex-1">{{ t.title }}</div><span class="px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ml-2" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span></div>
+                                <div class="flex justify-between items-center text-[10px] text-slate-400"><div class="flex gap-2"><span :class="{'text-red-500 font-bold': isOverdue(t)}">截止: {{ formatDateTime(t.deadline) || '-' }}</span></div><div class="font-mono"><span v-if="t.completedDate" class="text-green-600">完: {{ formatDateTime(t.completedDate).split(' ')[0] }}</span><span v-else class="text-slate-300">未完成</span></div></div>
                             </div>
                         </div>
-
-                        <!-- 统计表格 (电脑端) -->
                         <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hidden md:block">
                             <div class="px-6 py-4 border-b border-slate-50 font-bold text-slate-700">任务明细 ({{ statsStart }} ~ {{ statsEnd }})</div>
-                            <table class="w-full text-sm text-left">
-                                <thead class="bg-slate-50 text-slate-500"><tr><th class="px-6 py-3">名称</th><th class="px-6 py-3">状态</th><th class="px-6 py-3">计划与截止</th><th class="px-6 py-3">开始与结束</th></tr></thead>
-                                <tbody class="divide-y divide-slate-100">
-                                    <tr v-for="t in statsData.list" :key="t.id" @click="selectTask(t)" class="hover:bg-slate-50 cursor-pointer">
-                                        <td class="px-6 py-3 font-bold text-slate-700">{{ t.title }}</td>
-                                        <td class="px-6 py-3"><span class="px-2 py-1 rounded text-xs font-bold" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span></td>
-                                        <td class="px-6 py-3 text-xs"><div class="text-slate-600">{{ formatDateTime(t.date) }}</div><div :class="isOverdue(t)?'text-red-500':'text-slate-400'">{{ formatDateTime(t.deadline)||'-' }}</div></td>
-                                        <td class="px-6 py-3 text-xs"><div class="text-blue-600">{{ t.startTime?formatDateTime(t.startTime):'-' }}</div><div class="text-green-600">{{ t.completedDate?formatDateTime(t.completedDate):'-' }}</div></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <table class="w-full text-sm text-left"><thead class="bg-slate-50 text-slate-500"><tr><th class="px-6 py-3">名称</th><th class="px-6 py-3">状态</th><th class="px-6 py-3">计划与截止</th><th class="px-6 py-3">开始与结束</th></tr></thead><tbody class="divide-y divide-slate-100"><tr v-for="t in statsData.list" :key="t.id" @click="selectTask(t)" class="hover:bg-slate-50 cursor-pointer"><td class="px-6 py-3 font-bold text-slate-700">{{ t.title }}</td><td class="px-6 py-3"><span class="px-2 py-1 rounded text-xs font-bold" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span></td><td class="px-6 py-3 text-xs"><div class="text-slate-600">{{ formatDateTime(t.date) }}</div><div :class="isOverdue(t)?'text-red-500':'text-slate-400'">{{ formatDateTime(t.deadline)||'-' }}</div></td><td class="px-6 py-3 text-xs"><div class="text-blue-600">{{ t.startTime?formatDateTime(t.startTime):'-' }}</div><div class="text-green-600">{{ t.completedDate?formatDateTime(t.completedDate):'-' }}</div></td></tr></tbody></table>
                         </div>
                     </div>
                 </template>
             </main>
 
-            <!-- 右侧详情栏 (电脑端) -->
+            <!-- 右侧详情栏 (电脑端) - 现在集成了 AI 对话框 -->
             <aside class="hidden md:flex w-[350px] bg-white border-l border-slate-200 flex-col z-10 shrink-0 h-full shadow-[-4px_0_15px_rgba(0,0,0,0.02)]">
-                <div class="h-16 border-b border-slate-100 flex items-center px-6 bg-slate-50/80">
-                    <h3 class="font-bold text-slate-700 flex items-center gap-2"><i class="ph ph-sliders-horizontal"></i> 任务详情</h3>
+                
+                <!-- ⭐ 状态 1: AI 面板 (当 showAiPanel 为 true 时覆盖显示) -->
+                <div v-if="showAiPanel" class="flex flex-col h-full bg-rose-50/30">
+                     <div class="h-16 border-b border-rose-100 flex items-center justify-between px-6 bg-white shrink-0">
+                        <h3 class="font-bold text-rose-600 flex items-center gap-2"><i class="ph-fill ph-sparkle"></i> AI 助手</h3>
+                        <button @click="showAiPanel = false" class="text-xs font-bold text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100 flex items-center gap-1"><i class="ph-bold ph-arrow-u-up-left"></i> 返回</button>
+                    </div>
+                    <!-- AI 聊天内容 -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" ref="chatContainer">
+                         <div class="flex gap-3">
+                            <div class="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0"><i class="ph-fill ph-robot"></i></div>
+                            <div class="bg-white border border-rose-100 p-3 rounded-2xl rounded-tl-none text-sm text-slate-700 shadow-sm max-w-[85%]">
+                                告诉我你的计划，我来帮你记录。<br><span class="text-xs text-rose-400">例如："周五下午3点开会"</span>
+                            </div>
+                        </div>
+                        <div v-for="(msg, index) in chatHistory" :key="index" class="flex gap-3" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
+                            <div class="w-8 h-8 rounded-full shrink-0 flex items-center justify-center" :class="msg.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-rose-100 text-rose-600'"><i :class="msg.role === 'user' ? 'ph-fill ph-user' : 'ph-fill ph-robot'"></i></div>
+                            <div class="p-3 rounded-2xl text-sm shadow-sm max-w-[85%]" :class="msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-rose-100 text-slate-700 rounded-tl-none'">
+                                <div v-if="msg.type === 'text'">{{ msg.content }}</div>
+                                <div v-if="msg.type === 'loading'" class="flex gap-1 items-center h-5 px-2"><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-75"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-150"></div></div>
+                                <div v-if="msg.type === 'task_card'" class="mt-1">
+                                    <div class="mb-2 font-bold opacity-80">确认为您添加？</div>
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 text-left">
+                                        <div class="font-bold text-slate-800 text-base mb-1">{{ msg.data.title }}</div>
+                                        <div class="text-xs text-slate-500 flex flex-wrap gap-2"><span class="flex items-center gap-1"><i class="ph-bold ph-calendar-blank"></i> {{ formatDateTime(msg.data.date) }}</span><span v-if="msg.data.priority === 'urgent'" class="text-orange-500 font-bold">紧急</span></div>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button @click="confirmAiTask(msg.data, index)" class="flex-1 bg-rose-600 text-white py-1.5 rounded-lg font-bold text-xs hover:bg-rose-700 shadow-sm" :disabled="msg.confirmed">{{ msg.confirmed ? '已添加' : '确认' }}</button>
+                                        <button @click="chatHistory.splice(index, 1)" class="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-200" v-if="!msg.confirmed">取消</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4 bg-white border-t border-rose-100 shrink-0">
+                        <div class="flex gap-2 items-end bg-slate-50 p-2 rounded-xl border border-rose-100 focus-within:border-rose-400 focus-within:ring-2 focus-within:ring-rose-50 transition-all">
+                            <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" rows="1" placeholder="输入任务..." class="flex-1 bg-transparent border-none focus:ring-0 text-sm resize-none max-h-24 py-2 text-slate-700"></textarea>
+                            <button @click="sendAiMessage" class="p-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 active:scale-95 transition-transform disabled:opacity-50" :disabled="!aiInput.trim()"><i class="ph-bold ph-paper-plane-right"></i></button>
+                        </div>
+                    </div>
                 </div>
-                <div v-if="activeTask" class="flex-1 overflow-y-auto p-6 flex flex-col h-full">
-                    <div class="mb-6">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ activeTask.id.slice(-4) }}</span>
-                            <span v-if="isOverdue(activeTask) && currentView === 'dashboard'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600">已超时</span>
-                        </div>
-                        <h2 class="text-2xl font-black text-slate-800 leading-snug">{{ activeTask.title }}</h2>
+
+                <!-- 状态 2: 任务详情 (AI 面板关闭时显示) -->
+                <template v-else-if="activeTask">
+                    <div class="h-16 border-b border-slate-100 flex items-center px-6 bg-slate-50/80">
+                        <h3 class="font-bold text-slate-700 flex items-center gap-2"><i class="ph ph-sliders-horizontal"></i> 任务详情</h3>
                     </div>
-                    <div class="flex-1 flex flex-col mb-6 min-h-[150px]">
-                        <label class="text-xs font-bold text-slate-500 uppercase mb-2">备注 / 笔记</label>
-                        <textarea v-model="activeTask.note" placeholder="输入内容..." class="flex-1 w-full bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-slate-700 leading-relaxed focus:outline-none focus:ring-2 focus:ring-yellow-300 resize-none font-mono"></textarea>
-                    </div>
-                    <div class="mb-6 bg-slate-50 rounded-xl p-4 border border-slate-100">
-                        <div class="text-xs font-bold text-slate-500 uppercase mb-2">子任务</div>
-                        <ul class="space-y-1">
-                            <li v-for="sub in activeTask.subtasks" class="text-xs flex items-center gap-2"><i :class="sub.status==='done' ? 'ph-fill ph-check-circle text-green-500' : 'ph ph-circle text-slate-300'"></i><span :class="{'line-through text-slate-400': sub.status==='done', 'text-slate-600': sub.status!=='done'}">{{ sub.title }}</span></li>
-                            <li v-if="!activeTask.subtasks || activeTask.subtasks.length===0" class="text-xs text-slate-400 italic">无子任务</li>
-                        </ul>
-                    </div>
-                    <div class="border-t border-slate-100 pt-4 grid grid-cols-2 gap-4 text-xs">
-                        <div>
-                            <div class="text-slate-400 mb-1">计划日期</div>
-                            <div class="font-bold text-slate-700">{{ formatDateTime(activeTask.date) }}</div>
+                    <div class="flex-1 overflow-y-auto p-6 flex flex-col h-full">
+                         <div class="mb-6">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ activeTask.id.slice(-4) }}</span>
+                                <span v-if="isOverdue(activeTask) && currentView === 'dashboard'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600">已超时</span>
+                            </div>
+                            <h2 class="text-2xl font-black text-slate-800 leading-snug">{{ activeTask.title }}</h2>
                         </div>
-                        <div>
-                            <div class="text-slate-400 mb-1">截止时间</div>
-                            <div class="font-bold" :class="isOverdue(activeTask)?'text-red-500':'text-slate-700'">{{ formatDateTime(activeTask.deadline) || '-' }}</div>
+                        <div class="flex-1 flex flex-col mb-6 min-h-[150px]">
+                            <label class="text-xs font-bold text-slate-500 uppercase mb-2">备注 / 笔记</label>
+                            <textarea v-model="activeTask.note" placeholder="输入内容..." class="flex-1 w-full bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-slate-700 leading-relaxed focus:outline-none focus:ring-2 focus:ring-yellow-300 resize-none font-mono"></textarea>
                         </div>
-                        <div>
-                            <div class="text-slate-400 mb-1">开始时间</div>
-                            <div class="font-bold text-blue-600">{{ activeTask.startTime ? formatDateTime(activeTask.startTime) : '-' }}</div>
+                        <div class="mb-6 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                            <div class="text-xs font-bold text-slate-500 uppercase mb-2">子任务</div>
+                            <ul class="space-y-1">
+                                <li v-for="sub in activeTask.subtasks" class="text-xs flex items-center gap-2"><i :class="sub.status==='done' ? 'ph-fill ph-check-circle text-green-500' : 'ph ph-circle text-slate-300'"></i><span :class="{'line-through text-slate-400': sub.status==='done', 'text-slate-600': sub.status!=='done'}">{{ sub.title }}</span></li>
+                                <li v-if="!activeTask.subtasks || activeTask.subtasks.length===0" class="text-xs text-slate-400 italic">无子任务</li>
+                            </ul>
                         </div>
-                        <div>
-                            <div class="text-slate-400 mb-1">完成时间</div>
-                            <div class="font-bold text-green-600">{{ activeTask.completedDate ? formatDateTime(activeTask.completedDate) : '-' }}</div>
+                        <div class="border-t border-slate-100 pt-4 grid grid-cols-2 gap-4 text-xs">
+                            <div><div class="text-slate-400 mb-1">计划日期</div><div class="font-bold text-slate-700">{{ formatDateTime(activeTask.date) }}</div></div>
+                            <div><div class="text-slate-400 mb-1">截止时间</div><div class="font-bold" :class="isOverdue(activeTask)?'text-red-500':'text-slate-700'">{{ formatDateTime(activeTask.deadline) || '-' }}</div></div>
+                            <div><div class="text-slate-400 mb-1">开始时间</div><div class="font-bold text-blue-600">{{ activeTask.startTime ? formatDateTime(activeTask.startTime) : '-' }}</div></div>
+                            <div><div class="text-slate-400 mb-1">完成时间</div><div class="font-bold text-green-600">{{ activeTask.completedDate ? formatDateTime(activeTask.completedDate) : '-' }}</div></div>
                         </div>
                     </div>
-                </div>
-                <div v-else class="h-full flex flex-col items-center justify-center text-center opacity-40 p-10"><i class="ph ph-hand-tap text-5xl text-slate-300 mb-4"></i><h4 class="font-bold text-slate-600 text-lg">点击列表项</h4></div>
+                </template>
+
+                <!-- 状态 3: 空状态 (既无 AI 面板也无任务) -->
+                <div v-else class="h-full flex flex-col items-center justify-center text-center opacity-40 p-10"><i class="ph ph-hand-tap text-5xl text-slate-300 mb-4"></i><h4 class="font-bold text-slate-600 text-lg">点击列表项查看详情<br>或点击 AI 按钮对话</h4></div>
             </aside>
 
-            <!-- === 📱 手机端专属：任务详情浮层 (点击任务后滑出) === -->
-            <div v-if="activeTask" class="mobile-detail-overlay md:hidden">
-                <!-- 头部：返回按钮 + 标题 -->
-                <div class="h-14 border-b border-slate-100 flex items-center justify-between px-4 bg-white shrink-0">
-                    <button @click="activeTask = null" class="text-slate-500 flex items-center gap-1 font-bold">
-                        <i class="ph-bold ph-caret-left text-lg"></i> 返回
-                    </button>
-                    <div class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">ID: {{ activeTask.id.slice(-4) }}</div>
-                    <div class="flex gap-3">
-                        <button v-if="currentView !== 'scheduled'" @click="activeTask.status = 'done'; updateStatus(activeTask); activeTask = null" class="text-green-600"><i class="ph-fill ph-check-circle text-2xl"></i></button>
-                        <button @click="deleteTask(activeTask.id)" class="text-red-500"><i class="ph-bold ph-trash text-xl"></i></button>
-                    </div>
+            <!-- === 📱 手机端专属：AI 浮层 (showAiPanel 为 true 时覆盖全屏) === -->
+            <div v-if="showAiPanel" class="mobile-detail-overlay md:hidden flex flex-col z-50">
+                 <div class="h-14 border-b border-rose-100 flex items-center justify-between px-4 bg-white shrink-0">
+                    <button @click="showAiPanel = false" class="text-slate-500 flex items-center gap-1 font-bold"><i class="ph-bold ph-caret-left text-lg"></i> 返回</button>
+                    <div class="font-bold text-rose-600 flex items-center gap-1"><i class="ph-fill ph-sparkle"></i> AI 助手</div>
+                    <button @click="chatHistory = []" class="text-slate-400"><i class="ph ph-trash text-xl"></i></button>
                 </div>
-
-                <!-- 内容区域 -->
-                <div class="flex-1 overflow-y-auto p-5 space-y-6 pb-24 bg-slate-50/50">
-                    <div>
-                        <div class="flex items-center gap-2 mb-2">
-                            <span v-if="isOverdue(activeTask)" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600 border border-red-200">已超时</span>
-                            <span v-if="activeTask.priority === 'urgent'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 text-orange-600">紧急</span>
-                            <span v-if="activeTask.priority === 'critical'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600">特急</span>
+                <div class="flex-1 overflow-y-auto p-4 space-y-4 pb-24 bg-rose-50/30" ref="chatContainerMobile">
+                    <!-- 手机端聊天内容 (结构与电脑端完全一致) -->
+                     <div class="flex gap-3">
+                        <div class="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0"><i class="ph-fill ph-robot"></i></div>
+                        <div class="bg-white border border-rose-100 p-3 rounded-2xl rounded-tl-none text-sm text-slate-700 shadow-sm max-w-[85%]">
+                            告诉我你的计划，我来帮你记录。<br><span class="text-xs text-rose-400">例如："周五下午3点开会"</span>
                         </div>
-                        <h2 class="text-2xl font-black text-slate-800 leading-snug">{{ activeTask.title }}</h2>
                     </div>
-
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <label class="text-xs font-bold text-slate-400 uppercase mb-2 block">备注 / 笔记</label>
-                        <textarea v-model="activeTask.note" rows="5" placeholder="点击输入内容..." class="w-full text-sm text-slate-700 leading-relaxed focus:outline-none resize-none font-mono placeholder-slate-300"></textarea>
-                    </div>
-
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <label class="text-xs font-bold text-slate-400 uppercase mb-3 block flex justify-between">
-                            子任务清单
-                            <span class="text-blue-500" @click="openModal(activeTask)">去编辑</span>
-                        </label>
-                        <ul class="space-y-3">
-                            <li v-for="sub in activeTask.subtasks" :key="sub.title" class="text-sm flex items-start gap-3">
-                                <i :class="sub.status==='done' ? 'ph-fill ph-check-circle text-green-500 text-lg' : 'ph ph-circle text-slate-300 text-lg'"></i>
-                                <span :class="{'line-through text-slate-400': sub.status==='done', 'text-slate-700': sub.status!=='done'}" class="flex-1 leading-snug">{{ sub.title }}</span>
-                            </li>
-                            <li v-if="!activeTask.subtasks || activeTask.subtasks.length===0" class="text-sm text-slate-400 italic text-center py-2">无子任务</li>
-                        </ul>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">计划日期</div><div class="font-bold text-slate-700">{{ formatDateTime(activeTask.date) }}</div></div>
-                        <div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">截止时间</div><div class="font-bold" :class="isOverdue(activeTask)?'text-red-500':'text-slate-700'">{{ formatDateTime(activeTask.deadline) || '无' }}</div></div>
-                        <div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">开始时间</div><div class="font-bold text-blue-600">{{ activeTask.startTime ? formatDateTime(activeTask.startTime) : '-' }}</div></div>
-                        <div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">完成时间</div><div class="font-bold text-green-600">{{ activeTask.completedDate ? formatDateTime(activeTask.completedDate) : '-' }}</div></div>
+                    <div v-for="(msg, index) in chatHistory" :key="index" class="flex gap-3" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
+                        <div class="w-8 h-8 rounded-full shrink-0 flex items-center justify-center" :class="msg.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-rose-100 text-rose-600'"><i :class="msg.role === 'user' ? 'ph-fill ph-user' : 'ph-fill ph-robot'"></i></div>
+                        <div class="p-3 rounded-2xl text-sm shadow-sm max-w-[85%]" :class="msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-rose-100 text-slate-700 rounded-tl-none'">
+                            <div v-if="msg.type === 'text'">{{ msg.content }}</div>
+                            <div v-if="msg.type === 'loading'" class="flex gap-1 items-center h-5 px-2"><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-75"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-150"></div></div>
+                            <div v-if="msg.type === 'task_card'" class="mt-1">
+                                <div class="mb-2 font-bold opacity-80">确认为您添加？</div>
+                                <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 text-left">
+                                    <div class="font-bold text-slate-800 text-base mb-1">{{ msg.data.title }}</div>
+                                    <div class="text-xs text-slate-500 flex flex-wrap gap-2"><span class="flex items-center gap-1"><i class="ph-bold ph-calendar-blank"></i> {{ formatDateTime(msg.data.date) }}</span><span v-if="msg.data.priority === 'urgent'" class="text-orange-500 font-bold">紧急</span></div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button @click="confirmAiTask(msg.data, index)" class="flex-1 bg-rose-600 text-white py-1.5 rounded-lg font-bold text-xs hover:bg-rose-700 shadow-sm" :disabled="msg.confirmed">{{ msg.confirmed ? '已添加' : '确认' }}</button>
+                                    <button @click="chatHistory.splice(index, 1)" class="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-200" v-if="!msg.confirmed">取消</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-
-                <div class="absolute bottom-6 right-6 z-10">
-                    <button @click="openModal(activeTask)" class="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-300 flex items-center justify-center active:scale-90 transition-transform">
-                        <i class="ph-bold ph-pencil-simple text-2xl"></i>
-                    </button>
+                <div class="p-4 bg-white border-t border-rose-100 shrink-0 mb-[env(safe-area-inset-bottom)]">
+                    <div class="flex gap-2 items-end bg-slate-50 p-2 rounded-xl border border-rose-100 focus-within:border-rose-400 focus-within:ring-2 focus-within:ring-rose-50 transition-all">
+                        <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" rows="1" placeholder="输入任务..." class="flex-1 bg-transparent border-none focus:ring-0 text-sm resize-none max-h-24 py-2 text-slate-700"></textarea>
+                        <button @click="sendAiMessage" class="p-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 active:scale-95 transition-transform disabled:opacity-50" :disabled="!aiInput.trim()"><i class="ph-bold ph-paper-plane-right"></i></button>
+                    </div>
                 </div>
+            </div>
+
+            <!-- === 📱 手机端专属：任务详情浮层 (保持不变) === -->
+            <div v-if="activeTask && !showAiPanel" class="mobile-detail-overlay md:hidden">
+                <div class="h-14 border-b border-slate-100 flex items-center justify-between px-4 bg-white shrink-0">
+                    <button @click="activeTask = null" class="text-slate-500 flex items-center gap-1 font-bold"><i class="ph-bold ph-caret-left text-lg"></i> 返回</button>
+                    <div class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">ID: {{ activeTask.id.slice(-4) }}</div>
+                    <div class="flex gap-3"><button v-if="currentView !== 'scheduled'" @click="activeTask.status = 'done'; updateStatus(activeTask); activeTask = null" class="text-green-600"><i class="ph-fill ph-check-circle text-2xl"></i></button><button @click="deleteTask(activeTask.id)" class="text-red-500"><i class="ph-bold ph-trash text-xl"></i></button></div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5 space-y-6 pb-24 bg-slate-50/50">
+                    <div><div class="flex items-center gap-2 mb-2"><span v-if="isOverdue(activeTask)" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600 border border-red-200">已超时</span><span v-if="activeTask.priority === 'urgent'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 text-orange-600">紧急</span><span v-if="activeTask.priority === 'critical'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600">特急</span></div><h2 class="text-2xl font-black text-slate-800 leading-snug">{{ activeTask.title }}</h2></div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><label class="text-xs font-bold text-slate-400 uppercase mb-2 block">备注 / 笔记</label><textarea v-model="activeTask.note" rows="5" placeholder="点击输入内容..." class="w-full text-sm text-slate-700 leading-relaxed focus:outline-none resize-none font-mono placeholder-slate-300"></textarea></div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><label class="text-xs font-bold text-slate-400 uppercase mb-3 block flex justify-between">子任务清单 <span class="text-blue-500" @click="openModal(activeTask)">去编辑</span></label><ul class="space-y-3"><li v-for="sub in activeTask.subtasks" :key="sub.title" class="text-sm flex items-start gap-3"><i :class="sub.status==='done' ? 'ph-fill ph-check-circle text-green-500 text-lg' : 'ph ph-circle text-slate-300 text-lg'"></i><span :class="{'line-through text-slate-400': sub.status==='done', 'text-slate-700': sub.status!=='done'}" class="flex-1 leading-snug">{{ sub.title }}</span></li><li v-if="!activeTask.subtasks || activeTask.subtasks.length===0" class="text-sm text-slate-400 italic text-center py-2">无子任务</li></ul></div>
+                    <div class="grid grid-cols-2 gap-3"><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">计划日期</div><div class="font-bold text-slate-700">{{ formatDateTime(activeTask.date) }}</div></div><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">截止时间</div><div class="font-bold" :class="isOverdue(activeTask)?'text-red-500':'text-slate-700'">{{ formatDateTime(activeTask.deadline) || '无' }}</div></div><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">开始时间</div><div class="font-bold text-blue-600">{{ activeTask.startTime ? formatDateTime(activeTask.startTime) : '-' }}</div></div><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">完成时间</div><div class="font-bold text-green-600">{{ activeTask.completedDate ? formatDateTime(activeTask.completedDate) : '-' }}</div></div></div>
+                </div>
+                <div class="absolute bottom-6 right-6 z-10"><button @click="openModal(activeTask)" class="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-300 flex items-center justify-center active:scale-90 transition-transform"><i class="ph-bold ph-pencil-simple text-2xl"></i></button></div>
             </div>
 
             <!-- 移动端底部导航 -->
@@ -446,32 +382,8 @@
                 <button @click="switchView('statistics')" class="mobile-nav-item" :class="currentView === 'statistics' ? 'active' : ''"><i class="ph ph-chart-bar"></i>统计</button>
             </nav>
 
-            <!-- 模态框 (编辑/新建) -->
-            <div v-if="modal.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 mobile-modal-container">
-                <div @click="modal.show = false" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"></div>
-                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative flex flex-col max-h-[90vh] overflow-hidden transform transition-all mobile-bottom-sheet">
-                    <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50"><h3 class="font-bold text-lg text-slate-800">{{ modal.isEdit ? '编辑' : '新建' }}</h3><button @click="modal.show = false"><i class="ph ph-x text-xl"></i></button></div>
-                    <div class="p-6 overflow-y-auto space-y-5">
-                        <div v-if="currentView === 'dashboard' && !modal.isEdit && templates.length > 0" class="bg-purple-50 border border-purple-100 rounded-lg p-3">
-                            <select @change="loadTemplate($event)" class="w-full bg-white border border-purple-200 rounded px-2 py-1.5 text-sm text-slate-700"><option value="">-- 快速加载模板 --</option><option v-for="t in templates" :key="t.id" :value="t.id">{{ t.title }}</option></select>
-                        </div>
-                        <div><label class="text-xs font-bold text-slate-500 uppercase">名称</label><input v-model="modal.data.title" type="text" class="w-full text-lg font-bold border-b-2 border-slate-200 py-1 focus:border-blue-500 outline-none" placeholder="输入名称"></div>
-                        <div v-if="currentView === 'scheduled'" class="bg-teal-50 p-4 rounded-xl"><label class="text-xs font-bold text-teal-700 uppercase mb-2 block">重复周期</label><div class="flex justify-between gap-1"><label v-for="(dayStr, idx) in ['一','二','三','四','五','六','日']" :key="idx" class="cursor-pointer"><input type="checkbox" :value="idx === 6 ? 0 : idx + 1" v-model="modal.data.repeatDays" class="hidden peer"><span class="block w-8 h-8 rounded-full border border-teal-200 bg-white text-center leading-8 text-sm text-slate-500 peer-checked:bg-teal-500 peer-checked:text-white transition-all">{{ dayStr }}</span></label></div></div>
-                        <div><label class="text-xs font-bold text-slate-500 uppercase">备注</label><textarea v-model="modal.data.note" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm resize-none"></textarea></div>
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                            <div class="space-y-2">
-                                <div v-for="(sub, index) in modal.data.subtasks" :key="index" class="flex gap-2 items-center group" draggable="true" @dragstart="dragStart(index, $event)" @drop="dragDrop(index)" @dragover.prevent><i class="ph-bold ph-dots-six-vertical text-slate-300 cursor-move"></i><input v-model="sub.title" class="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-sm"><button @click="modal.data.subtasks.splice(index, 1)"><i class="ph-bold ph-trash text-slate-400"></i></button></div>
-                                <div class="flex gap-2"><input type="text" ref="newSubInput" placeholder="新子任务..." @keydown.enter="addModalSubtask" class="flex-1 bg-transparent border-b border-slate-300 px-2 py-1 text-sm outline-none"><button @click="addModalSubtask" class="text-blue-600 text-sm font-bold">添加</button></div>
-                            </div>
-                        </div>
-                        <div v-if="currentView === 'dashboard'" class="grid grid-cols-2 gap-4"><div><label class="text-xs font-bold text-slate-500 uppercase">计划</label><input type="datetime-local" v-model="modal.data.date" class="w-full border border-slate-200 rounded px-2 py-2 text-sm"></div><div><label class="text-xs font-bold text-slate-500 uppercase">截止</label><input type="datetime-local" v-model="modal.data.deadline" class="w-full border border-slate-200 rounded px-2 py-2 text-sm"></div></div>
-                    </div>
-                    <div class="p-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
-                        <button @click="modal.show = false" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm">取消</button>
-                        <button @click="saveTask" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-bold shadow">确认</button>
-                    </div>
-                </div>
-            </div>
+            <!-- 模态框 (保持不变) -->
+            <div v-if="modal.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 mobile-modal-container"><div @click="modal.show = false" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"></div><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative flex flex-col max-h-[90vh] overflow-hidden transform transition-all mobile-bottom-sheet"><div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50"><h3 class="font-bold text-lg text-slate-800">{{ modal.isEdit ? '编辑' : '新建' }}</h3><button @click="modal.show = false"><i class="ph ph-x text-xl"></i></button></div><div class="p-6 overflow-y-auto space-y-5"><div v-if="currentView === 'dashboard' && !modal.isEdit && templates.length > 0" class="bg-purple-50 border border-purple-100 rounded-lg p-3"><select @change="loadTemplate($event)" class="w-full bg-white border border-purple-200 rounded px-2 py-1.5 text-sm text-slate-700"><option value="">-- 快速加载模板 --</option><option v-for="t in templates" :key="t.id" :value="t.id">{{ t.title }}</option></select></div><div><label class="text-xs font-bold text-slate-500 uppercase">名称</label><input v-model="modal.data.title" type="text" class="w-full text-lg font-bold border-b-2 border-slate-200 py-1 focus:border-blue-500 outline-none" placeholder="输入名称"></div><div v-if="currentView === 'scheduled'" class="bg-teal-50 p-4 rounded-xl"><label class="text-xs font-bold text-teal-700 uppercase mb-2 block">重复周期</label><div class="flex justify-between gap-1"><label v-for="(dayStr, idx) in ['一','二','三','四','五','六','日']" :key="idx" class="cursor-pointer"><input type="checkbox" :value="idx === 6 ? 0 : idx + 1" v-model="modal.data.repeatDays" class="hidden peer"><span class="block w-8 h-8 rounded-full border border-teal-200 bg-white text-center leading-8 text-sm text-slate-500 peer-checked:bg-teal-500 peer-checked:text-white transition-all">{{ dayStr }}</span></label></div></div><div><label class="text-xs font-bold text-slate-500 uppercase">备注</label><textarea v-model="modal.data.note" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm resize-none"></textarea></div><div class="bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="space-y-2"><div v-for="(sub, index) in modal.data.subtasks" :key="index" class="flex gap-2 items-center group" draggable="true" @dragstart="dragStart(index, $event)" @drop="dragDrop(index)" @dragover.prevent><i class="ph-bold ph-dots-six-vertical text-slate-300 cursor-move"></i><input v-model="sub.title" class="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-sm"><button @click="modal.data.subtasks.splice(index, 1)"><i class="ph-bold ph-trash text-slate-400"></i></button></div><div class="flex gap-2"><input type="text" ref="newSubInput" placeholder="新子任务..." @keydown.enter="addModalSubtask" class="flex-1 bg-transparent border-b border-slate-300 px-2 py-1 text-sm outline-none"><button @click="addModalSubtask" class="text-blue-600 text-sm font-bold">添加</button></div></div></div><div v-if="currentView === 'dashboard'" class="grid grid-cols-2 gap-4"><div><label class="text-xs font-bold text-slate-500 uppercase">计划</label><input type="datetime-local" v-model="modal.data.date" class="w-full border border-slate-200 rounded px-2 py-2 text-sm"></div><div><label class="text-xs font-bold text-slate-500 uppercase">截止</label><input type="datetime-local" v-model="modal.data.deadline" class="w-full border border-slate-200 rounded px-2 py-2 text-sm"></div></div></div><div class="p-4 border-t border-slate-100 flex justify-end gap-3 bg-white"><button @click="modal.show = false" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm">取消</button><button @click="saveTask" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-bold shadow">确认</button></div></div></div>
         </template>
     </div>
 
