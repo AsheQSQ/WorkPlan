@@ -1,4 +1,4 @@
-// --- Supabase 配置 ---
+// --- Supabase 配置 (保持不变) ---
 const SUPABASE_URL = 'https://scjswpjktydojedqywxq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_TSXrb7sbhV7l5hgqjC0KuA_dVdxmSpu';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -31,7 +31,7 @@ createApp({
             // AI 相关
             aiInput: '',
             chatHistory: [],
-            showAiPanel: false, // 控制面板显示状态
+            showAiPanel: false,
 
             // 业务数据
             today: new Date().toISOString().split('T')[0],
@@ -220,17 +220,15 @@ createApp({
         resetToToday() { this.viewDate = this.today; this.checkScheduledTasks(); },
         switchView(view) { this.currentView = view; this.activeTask = null; if (view === 'dashboard') { this.viewDate = this.today; this.checkScheduledTasks(); } },
         
-        // ⭐⭐ 关键修复：添加了 toggleAiPanel 方法 ⭐⭐
         toggleAiPanel() {
             this.showAiPanel = !this.showAiPanel;
             if (this.showAiPanel) {
-                // 打开 AI 时，清空当前选中的任务，避免界面重叠
                 this.activeTask = null;
             }
         },
 
         selectTask(task) { 
-            this.showAiPanel = false; // 选中任务时自动关闭 AI
+            this.showAiPanel = false;
             this.activeTask = task; 
         },
         toggleAll() { this.isAllExpanded = !this.isAllExpanded; this.activeTasks.forEach(t => t.expanded = this.isAllExpanded); },
@@ -250,7 +248,7 @@ createApp({
         getStatsStatusStyle(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700') : (t.status === 'doing' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'); },
         getStatsStatusLabel(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? '超时完成' : '已完成') : { 'todo': '未开始', 'doing': '进行中' }[t.status]; },
 
-        // === AI 助手核心逻辑 ===
+        // === AI 助手核心逻辑 (使用自定义 Vercel API) ===
 
         async sendAiMessage() {
             const text = this.aiInput.trim();
@@ -265,6 +263,7 @@ createApp({
             this.$nextTick(() => this.scrollToBottom());
 
             try {
+                // 调用新的分析方法
                 const result = await this.analyzeAiIntent(text);
 
                 // 移除加载状态
@@ -281,16 +280,19 @@ createApp({
                     this.chatHistory.push({
                         role: 'assistant',
                         type: 'text',
-                        content: 'AI 无法生成有效的任务数据。请描述得更具体一点（包含时间、要做什么）。'
+                        content: 'AI 似乎没有理解，请尝试描述得更具体一点（例如包含时间）。'
                     });
                 }
             } catch (error) {
                 this.chatHistory.pop(); // 移除加载
                 console.error(error);
+                let errorMsg = "请求出错，请检查网络或 Key 配置。";
+                if(error.message) errorMsg = `出错了: ${error.message}`;
+                
                 this.chatHistory.push({
                     role: 'assistant',
                     type: 'text',
-                    content: `出错了: ${error.message}`
+                    content: errorMsg
                 });
             }
 
@@ -319,35 +321,59 @@ createApp({
             if (container) container.scrollTop = container.scrollHeight;
         },
 
+        // ⭐⭐⭐ 核心修改：调用本地 Vercel API 代理混元模型 ⭐⭐⭐
         async analyzeAiIntent(userText) {
-            const MY_API_KEY = 'AIzaSyAAiJbcM0nREVQFd8V-bqFlfjzlArYa90M'; 
-            
-            // ⭐ 修正：gemini-2.5 尚未发布，改回稳定的 1.5 版本
-            const MY_MODEL_NAME = 'models/gemini-2.5-flash';
+            // 构造系统提示词
+            const nowStr = new Date().toLocaleString('zh-CN', { hour12: false });
+            // 因为你的 api/chat.js 只是简单转发 message 字符串，我们需要把 Prompt 和 用户输入 拼在一起
+            const systemInstructions = `你是一个任务管理助手。当前时间：${nowStr}。
+            请根据用户的自然语言输入生成一个任务对象。
+            【要求】
+            1. 严格只返回纯 JSON 格式字符串，不要包含 markdown 标记（如 \`\`\`json 或 \`\`\`）。
+            2. 不要包含任何解释性文字。
+            3. JSON 需包含以下字段：
+               - "title": 任务标题 (String)
+               - "date": 计划日期时间, 格式 "YYYY-MM-DDTHH:mm" (String)
+               - "priority": 优先级, 只能是 "normal" 或 "urgent" (String)
+               - "note": 备注信息 (String)
+            `;
 
-            let cleanModelName = MY_MODEL_NAME.startsWith('models/') ? MY_MODEL_NAME : `models/${MY_MODEL_NAME}`;
-            const API_URL = `https://generativelanguage.googleapis.com/v1beta/${cleanModelName}:generateContent?key=${MY_API_KEY}`;
+            const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-            const now = new Date();
-            const systemPrompt = `你是一个任务管理助手。当前时间：${now.toLocaleString('zh-CN', { hour12: false })}。严格返回JSON：{"title":"标题","date":"YYYY-MM-DDTHH:mm","priority":"normal/urgent","note":"备注"}`;
-
-            const response = await fetch(API_URL, {
+            // 调用你的 Vercel API
+            const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n用户输入: " + userText }] }] })
+                body: JSON.stringify({ message: fullMessage })
             });
 
-            if (!response.ok) throw new Error('API 请求失败');
-            const data = await response.json();
-            let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!rawText) return null;
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status}`);
+            }
 
-            // 清理 markdown 标记
-            const parsed = JSON.parse(rawText.replace(/```json/g, '').replace(/```/g, '').trim());
+            const data = await response.json();
+            
+            // 解析腾讯混元的返回格式
+            // 混元通常返回结构: { choices: [{ message: { content: "..." } }], ... }
+            const aiRawContent = data.choices?.[0]?.message?.content;
+            
+            if (!aiRawContent) {
+                console.warn("AI 返回为空", data);
+                return null;
+            }
+
+            // 清理可能存在的 Markdown 代码块标记
+            const cleanJsonStr = aiRawContent
+                .replace(/```json/g, '')
+                .replace(/```/g, '')
+                .trim();
+
+            const parsed = JSON.parse(cleanJsonStr);
+
             return {
                 id: Date.now().toString(),
-                title: parsed.title,
-                date: parsed.date,
+                title: parsed.title || "未命名任务",
+                date: parsed.date || this.today + "T09:00",
                 status: 'todo',
                 priority: parsed.priority || 'normal',
                 subtasks: [],
