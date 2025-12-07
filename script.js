@@ -343,7 +343,7 @@ createApp({
 
             // ⭐⭐ 修改这里：使用你的 Vercel 完整域名 ⭐⭐
             // 请将 https://你的项目名.vercel.app 替换为你真实的 Vercel 访问地址
-            const VERCEL_HOST = 'https://work-plan-puce.vercel.app/'; 
+            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz/'; 
             
             try {
                 const response = await fetch(`${VERCEL_HOST}/api/chat`, {
