@@ -322,14 +322,15 @@ createApp({
         },
 
         // ⭐⭐⭐ 核心修改：调用本地 Vercel API 代理混元模型 ⭐⭐⭐
+// ... 在 analyzeAiIntent 函数内部 ...
+
         async analyzeAiIntent(userText) {
-            // 构造系统提示词
+            // 构造系统提示词 (保持不变)
             const nowStr = new Date().toLocaleString('zh-CN', { hour12: false });
-            // 因为你的 api/chat.js 只是简单转发 message 字符串，我们需要把 Prompt 和 用户输入 拼在一起
             const systemInstructions = `你是一个任务管理助手。当前时间：${nowStr}。
             请根据用户的自然语言输入生成一个任务对象。
             【要求】
-            1. 严格只返回纯 JSON 格式字符串，不要包含 markdown 标记（如 \`\`\`json 或 \`\`\`）。
+            1. 严格只返回纯 JSON 格式字符串，不要包含 markdown 标记。
             2. 不要包含任何解释性文字。
             3. JSON 需包含以下字段：
                - "title": 任务标题 (String)
@@ -340,45 +341,48 @@ createApp({
 
             const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-            // 调用你的 Vercel API
-            const response = await fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: fullMessage })
-            });
-
-            if (!response.ok) {
-                throw new Error(`API Error: ${response.status}`);
-            }
-
-            const data = await response.json();
+            // ⭐⭐ 修改这里：使用你的 Vercel 完整域名 ⭐⭐
+            // 请将 https://你的项目名.vercel.app 替换为你真实的 Vercel 访问地址
+            const VERCEL_HOST = 'https://WorkPlan.vercel.app'; 
             
-            // 解析腾讯混元的返回格式
-            // 混元通常返回结构: { choices: [{ message: { content: "..." } }], ... }
-            const aiRawContent = data.choices?.[0]?.message?.content;
-            
-            if (!aiRawContent) {
-                console.warn("AI 返回为空", data);
-                return null;
+            try {
+                const response = await fetch(`${VERCEL_HOST}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: fullMessage })
+                });
+
+                if (!response.ok) {
+                    // 如果跨域配置正确但这里报错，可能是 500 服务器错误
+                    throw new Error(`API Error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // ... (后续解析逻辑保持不变)
+                const aiRawContent = data.choices?.[0]?.message?.content;
+                if (!aiRawContent) return null;
+
+                const cleanJsonStr = aiRawContent
+                    .replace(/```json/g, '')
+                    .replace(/```/g, '')
+                    .trim();
+
+                const parsed = JSON.parse(cleanJsonStr);
+
+                return {
+                    id: Date.now().toString(),
+                    title: parsed.title || "未命名任务",
+                    date: parsed.date || this.today + "T09:00",
+                    status: 'todo',
+                    priority: parsed.priority || 'normal',
+                    subtasks: [],
+                    note: parsed.note || ''
+                };
+            } catch (error) {
+                console.error("AI 请求失败:", error);
+                throw error; // 抛出错误以便上层捕获显示
             }
-
-            // 清理可能存在的 Markdown 代码块标记
-            const cleanJsonStr = aiRawContent
-                .replace(/```json/g, '')
-                .replace(/```/g, '')
-                .trim();
-
-            const parsed = JSON.parse(cleanJsonStr);
-
-            return {
-                id: Date.now().toString(),
-                title: parsed.title || "未命名任务",
-                date: parsed.date || this.today + "T09:00",
-                status: 'todo',
-                priority: parsed.priority || 'normal',
-                subtasks: [],
-                note: parsed.note || ''
-            };
         }
     }
 }).mount('#app');
