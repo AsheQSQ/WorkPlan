@@ -1,7 +1,14 @@
-// --- Supabase 配置 (保持不变) ---
+// --- Supabase 配置 ---
 const SUPABASE_URL = 'https://scjswpjktydojedqywxq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_TSXrb7sbhV7l5hgqjC0KuA_dVdxmSpu';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// 将变量名改为 supabaseClient 避免与 window.supabase 全局对象冲突
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+        persistSession: true, // 如果浏览器拦截严重，可改为 false，但会导致刷新后需重新登录
+        autoRefreshToken: true
+    }
+});
 
 const { createApp } = Vue;
 
@@ -132,7 +139,7 @@ createApp({
         async loadData() {
             this.isSyncing = 'syncing';
             try {
-                const { data } = await supabase.from('user_data').select('content, updated_at').eq('my_key', this.accessKey).single();
+                const { data, error } = await supabaseClient.from('user_data').select('content, updated_at').eq('my_key', this.accessKey).single();
                 if (data && data.content) {
                     const json = data.content;
                     if (json.tasks) this.tasks = json.tasks;
@@ -159,8 +166,11 @@ createApp({
             this.saveTimer = setTimeout(async () => {
                 const nowTimestamp = Date.now();
                 const rawData = JSON.parse(currentPureStr);
-                const { error } = await supabase.from('user_data').upsert({ my_key: this.accessKey, content: rawData, updated_at: nowTimestamp }, { onConflict: 'my_key' });
-                if (error) { this.isSyncing = 'error'; }
+                const { error } = await supabaseClient.from('user_data').upsert({ my_key: this.accessKey, content: rawData, updated_at: nowTimestamp }, { onConflict: 'my_key' });
+                if (error) { 
+                    console.error("保存失败:", error);
+                    this.isSyncing = 'error'; 
+                }
                 else {
                     this.lastUpdatedAt = nowTimestamp;
                     this.lastCloudStr = currentPureStr;
@@ -203,7 +213,7 @@ createApp({
             else if (type === 'lastMonth') { this.statsStart = new Date(y, m - 1, 1, 12).toISOString().split('T')[0]; this.statsEnd = new Date(y, m, 0, 12).toISOString().split('T')[0]; }
         },
 
-        handleClearData() { if (confirm(`⚠️ 警告：删除 [${this.accessKey}] 所有数据？`)) { supabase.from('user_data').delete().eq('my_key', this.accessKey).then(() => location.reload()); } },
+        handleClearData() { if (confirm(`⚠️ 警告：删除 [${this.accessKey}] 所有数据？`)) { supabaseClient.from('user_data').delete().eq('my_key', this.accessKey).then(() => location.reload()); } },
         exportData() { const blob = new Blob([JSON.stringify({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${this.today}.json`; a.click(); },
         importData(event) {
             const file = event.target.files[0]; if (!file) return;
@@ -248,25 +258,18 @@ createApp({
         getStatsStatusStyle(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700') : (t.status === 'doing' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'); },
         getStatsStatusLabel(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? '超时完成' : '已完成') : { 'todo': '未开始', 'doing': '进行中' }[t.status]; },
 
-        // === AI 助手核心逻辑 (使用自定义 Vercel API) ===
-
+        // === AI 助手核心逻辑 ===
         async sendAiMessage() {
             const text = this.aiInput.trim();
             if (!text) return;
 
-            // 添加用户消息
             this.chatHistory.push({ role: 'user', type: 'text', content: text });
             this.aiInput = '';
-
-            // 添加加载状态
             this.chatHistory.push({ role: 'assistant', type: 'loading' });
             this.$nextTick(() => this.scrollToBottom());
 
             try {
-                // 调用新的分析方法
                 const result = await this.analyzeAiIntent(text);
-
-                // 移除加载状态
                 this.chatHistory.pop();
 
                 if (result) {
@@ -277,42 +280,21 @@ createApp({
                         confirmed: false
                     });
                 } else {
-                    this.chatHistory.push({
-                        role: 'assistant',
-                        type: 'text',
-                        content: 'AI 似乎没有理解，请尝试描述得更具体一点（例如包含时间）。'
-                    });
+                    this.chatHistory.push({ role: 'assistant', type: 'text', content: 'AI 似乎没有理解，请尝试描述得更具体一点。' });
                 }
             } catch (error) {
-                this.chatHistory.pop(); // 移除加载
+                this.chatHistory.pop();
                 console.error(error);
-                let errorMsg = "请求出错，请检查网络或 Key 配置。";
-                if(error.message) errorMsg = `出错了: ${error.message}`;
-                
-                this.chatHistory.push({
-                    role: 'assistant',
-                    type: 'text',
-                    content: errorMsg
-                });
+                this.chatHistory.push({ role: 'assistant', type: 'text', content: `请求出错: ${error.message}` });
             }
-
             this.$nextTick(() => this.scrollToBottom());
         },
 
-        // 确认添加
         confirmAiTask(taskData, msgIndex) {
             this.tasks.push(taskData);
             this.saveData(); 
-
-            // 更新卡片状态
             this.chatHistory[msgIndex].confirmed = true;
-
-            // 发送成功提示
-            this.chatHistory.push({
-                role: 'assistant',
-                type: 'text',
-                content: `✅ 任务 "${taskData.title}" 已成功添加到列表！`
-            });
+            this.chatHistory.push({ role: 'assistant', type: 'text', content: `✅ 任务 "${taskData.title}" 已成功添加到列表！` });
             this.$nextTick(() => this.scrollToBottom());
         },
 
@@ -321,29 +303,14 @@ createApp({
             if (container) container.scrollTop = container.scrollHeight;
         },
 
-        // ⭐⭐⭐ 核心修改：调用本地 Vercel API 代理混元模型 ⭐⭐⭐
-// ... 在 analyzeAiIntent 函数内部 ...
-
         async analyzeAiIntent(userText) {
-            // 构造系统提示词 (保持不变)
             const nowStr = new Date().toLocaleString('zh-CN', { hour12: false });
-            const systemInstructions = `你是一个任务管理助手。当前时间：${nowStr}。
-            请根据用户的自然语言输入生成一个任务对象。
-            【要求】
-            1. 严格只返回纯 JSON 格式字符串，不要包含 markdown 标记。
-            2. 不要包含任何解释性文字。
-            3. JSON 需包含以下字段：
-               - "title": 任务标题 (String)
-               - "date": 计划日期时间, 格式 "YYYY-MM-DDTHH:mm" (String)
-               - "priority": 优先级, 只能是 "normal" 或 "urgent" (String)
-               - "note": 备注信息 (String)
-            `;
+            const systemInstructions = `你是一个任务管理助手。当前时间：${nowStr}。请根据用户的自然语言输入生成一个任务 JSON。包含字段: title, date(YYYY-MM-DDTHH:mm), priority(normal/urgent), note。`;
 
             const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-            // ⭐⭐ 修改这里：使用你的 Vercel 完整域名 ⭐⭐
-            // 请将 https://你的项目名.vercel.app 替换为你真实的 Vercel 访问地址
-            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz/'; 
+            // 注意：去掉末尾斜杠，fetch 时再拼 /api/chat
+            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
             
             try {
                 const response = await fetch(`${VERCEL_HOST}/api/chat`, {
@@ -352,22 +319,13 @@ createApp({
                     body: JSON.stringify({ message: fullMessage })
                 });
 
-                if (!response.ok) {
-                    // 如果跨域配置正确但这里报错，可能是 500 服务器错误
-                    throw new Error(`API Error: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`API 响应错误: ${response.status}`);
 
                 const data = await response.json();
-                
-                // ... (后续解析逻辑保持不变)
                 const aiRawContent = data.choices?.[0]?.message?.content;
                 if (!aiRawContent) return null;
 
-                const cleanJsonStr = aiRawContent
-                    .replace(/```json/g, '')
-                    .replace(/```/g, '')
-                    .trim();
-
+                const cleanJsonStr = aiRawContent.replace(/```json/g, '').replace(/```/g, '').trim();
                 const parsed = JSON.parse(cleanJsonStr);
 
                 return {
@@ -381,7 +339,7 @@ createApp({
                 };
             } catch (error) {
                 console.error("AI 请求失败:", error);
-                throw error; // 抛出错误以便上层捕获显示
+                throw error;
             }
         }
     }
