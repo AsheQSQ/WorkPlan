@@ -188,8 +188,22 @@ createApp({
                 while (checkDate <= todayDate) {
                     const dayOfWeek = checkDate.getDay();
                     if (sch.repeatDays.includes(dayOfWeek)) {
-                        this.tasks.push({ id: Date.now() + Math.random().toString(36).substr(2, 5), title: sch.title, status: 'todo', priority: sch.priority, date: checkDate.toISOString().split('T')[0] + 'T09:00', deadline: '', note: sch.note, subtasks: JSON.parse(JSON.stringify(sch.subtasks)), expanded: false, isFromSchedule: true });
+                        // === 修改开始：计算时间并拼接到备注 ===
+                        const taskTime = checkDate.toISOString().split('T')[0] + 'T09:00';
+                        this.tasks.push({ 
+                            id: Date.now() + Math.random().toString(36).substr(2, 5), 
+                            title: sch.title, 
+                            status: 'todo', 
+                            priority: sch.priority, 
+                            date: taskTime, 
+                            deadline: '', 
+                            note: `计划开始时间：${taskTime}\n${sch.note || ''}`, // 拼接备注
+                            subtasks: JSON.parse(JSON.stringify(sch.subtasks)), 
+                            expanded: false, 
+                            isFromSchedule: true 
+                        });
                         addedCount++;
+                        // === 修改结束 ===
                     }
                     checkDate.setDate(checkDate.getDate() + 1);
                 }
