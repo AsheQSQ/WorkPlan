@@ -2,36 +2,20 @@
 const SUPABASE_URL = 'https://scjswpjktydojedqywxq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_TSXrb7sbhV7l5hgqjC0KuA_dVdxmSpu';
 
-// 将变量名改为 supabaseClient 避免与 window.supabase 全局对象冲突
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: {
-        persistSession: true, // 如果浏览器拦截严重，可改为 false，但会导致刷新后需重新登录
-        autoRefreshToken: true
-    }
-});
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const { createApp } = Vue;
-
-// 辅助工具：提取纯净数据
-const getPureDataString = (data) => {
-    const copy = JSON.parse(JSON.stringify(data));
-    ['tasks', 'templates', 'scheduledTasks'].forEach(key => {
-        if (copy[key]) copy[key].forEach(item => {
-            delete item.expanded;
-            delete item.isFromSchedule;
-        });
-    });
-    return JSON.stringify(copy);
-};
 
 createApp({
     data() {
         return {
-            // 登录与同步
+            // V4 身份与鉴权
+            isRegisterMode: false,
             accessKey: null,
+            userId: null,
             inputKey: '',
-            lastUpdatedAt: 0,
-            lastCloudStr: '',
+            inputPassword: '',
+            
             isSyncing: 'idle',
             saveTimer: null,
 
@@ -122,62 +106,186 @@ createApp({
     },
     mounted() {
         const savedKey = localStorage.getItem('planpro_access_key');
-        if (savedKey) { this.accessKey = savedKey; this.loadData(); }
+        const savedId = localStorage.getItem('planpro_user_id');
+        if (savedKey && savedId) { 
+            this.accessKey = savedKey; 
+            this.userId = savedId;
+            this.loadData(); 
+        }
         this.setStatsRange('week');
         setInterval(() => { this.now = new Date(); if (this.currentView === 'dashboard' && this.viewDate === this.today) this.checkScheduledTasks(); }, 60000);
     },
     watch: {
-        tasks: { handler() { if (this.accessKey) this.saveData(); }, deep: true },
-        templates: { handler() { if (this.accessKey) this.saveData(); }, deep: true },
-        scheduledTasks: { handler() { if (this.accessKey) this.saveData(); }, deep: true }
+        // 监听前端数组变动，触发数据库分表自动保存
+        tasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
+        templates: { handler() { if (this.userId) this.saveData(); }, deep: true },
+        scheduledTasks: { handler() { if (this.userId) this.saveData(); }, deep: true }
     },
     methods: {
-        login() { if (!this.inputKey.trim()) return alert("Key 不能为空"); this.accessKey = this.inputKey.trim(); localStorage.setItem('planpro_access_key', this.accessKey); this.loadData(); },
-        generateKey() { this.inputKey = 'user_' + Math.random().toString(36).substr(2, 9); },
-        logout() { if (confirm("确定要退出当前 Key 吗？")) { localStorage.removeItem('planpro_access_key'); this.accessKey = null; this.inputKey = ''; this.tasks = []; this.templates = []; this.scheduledTasks = []; } },
+        // === V4.0 安全鉴权 ===
+        async handleAuth() {
+            if (!this.inputKey.trim() || !this.inputPassword.trim()) return alert("账号和密码不能为空");
+            
+            this.isSyncing = 'syncing';
+            try {
+                if (this.isRegisterMode) {
+                    const { data, error } = await supabaseClient.rpc('register_user', { p_access_key: this.inputKey.trim(), p_password: this.inputPassword });
+                    if (error) throw new Error(error.message.includes('unique') ? '该账号已被注册' : error.message);
+                    this.userId = data;
+                    alert("注册成功！已为您自动登录。");
+                } else {
+                    const { data, error } = await supabaseClient.rpc('verify_login', { p_access_key: this.inputKey.trim(), p_password: this.inputPassword });
+                    if (error) throw error;
+                    if (!data) return alert("账号或密码错误");
+                    this.userId = data;
+                }
+                
+                this.accessKey = this.inputKey.trim();
+                localStorage.setItem('planpro_access_key', this.accessKey);
+                localStorage.setItem('planpro_user_id', this.userId);
+                
+                await this.loadData();
+            } catch (e) {
+                console.error(e);
+                alert("错误: " + e.message);
+                this.isSyncing = 'error';
+            }
+        },
+        
+        logout() { 
+            if (confirm("确定要退出当前账号吗？")) { 
+                localStorage.removeItem('planpro_access_key'); 
+                localStorage.removeItem('planpro_user_id'); 
+                this.accessKey = null; 
+                this.userId = null;
+                this.inputKey = ''; 
+                this.inputPassword = '';
+                this.tasks = []; 
+                this.templates = []; 
+                this.scheduledTasks = []; 
+            } 
+        },
 
+        // === V4.0 从数据库分表加载数据 ===
         async loadData() {
             this.isSyncing = 'syncing';
             try {
-                const { data, error } = await supabaseClient.from('user_data').select('content, updated_at').eq('my_key', this.accessKey).single();
-                if (data && data.content) {
-                    const json = data.content;
-                    if (json.tasks) this.tasks = json.tasks;
-                    if (json.templates) this.templates = json.templates;
-                    if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks;
-                    this.lastUpdatedAt = data.updated_at || 0;
-                    this.lastCloudStr = getPureDataString({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks });
-                    this.isSyncing = 'done';
-                } else {
-                    console.log("新用户或无云端数据"); this.isSyncing = 'idle';
-                }
+                // 并行从三张表读取
+                const [tasksRes, templatesRes, scheduledRes] = await Promise.all([
+                    supabaseClient.from('tasks').select('*').eq('user_id', this.userId),
+                    supabaseClient.from('templates').select('*').eq('user_id', this.userId),
+                    supabaseClient.from('scheduled_tasks').select('*').eq('user_id', this.userId)
+                ]);
+
+                // 字段映射：数据库 (下划线) -> 前端 (驼峰)
+                this.tasks = (tasksRes.data || []).map(t => ({
+                    ...t,
+                    date: t.plan_date ? t.plan_date.substring(0, 16) : '',
+                    deadline: t.deadline ? t.deadline.substring(0, 16) : '',
+                    startTime: t.start_time ? t.start_time.substring(0, 16) : null,
+                    completedDate: t.completed_date ? t.completed_date.substring(0, 16) : null,
+                    isFromSchedule: t.is_from_schedule,
+                    expanded: false
+                }));
+
+                this.templates = templatesRes.data || [];
+
+                this.scheduledTasks = (scheduledRes.data || []).map(s => ({
+                    ...s,
+                    repeatDays: s.repeat_days || [],
+                    lastGeneratedDate: s.last_generated_date
+                }));
+
+                this.isSyncing = 'done';
+                setTimeout(() => { if (this.isSyncing === 'done') this.isSyncing = 'idle'; }, 2000);
                 this.checkScheduledTasks();
-            } catch (e) { console.error(e); this.isSyncing = 'error'; }
+            } catch (e) { 
+                console.error(e); 
+                this.isSyncing = 'error'; 
+            }
         },
 
+        // === V4.0 保存数据到数据库分表 ===
         saveData() {
-            if (!this.accessKey) return;
-            const currentPureStr = getPureDataString({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks });
-            if (currentPureStr === this.lastCloudStr) return;
-
+            if (!this.userId) return;
+            
             this.isSyncing = 'syncing';
             if (this.saveTimer) clearTimeout(this.saveTimer);
 
             this.saveTimer = setTimeout(async () => {
-                const nowTimestamp = Date.now();
-                const rawData = JSON.parse(currentPureStr);
-                const { error } = await supabaseClient.from('user_data').upsert({ my_key: this.accessKey, content: rawData, updated_at: nowTimestamp }, { onConflict: 'my_key' });
-                if (error) { 
+                try {
+                    // 字段映射：前端 (驼峰) -> 数据库 (下划线)
+                    const dbTasks = this.tasks.map(t => ({
+                        id: t.id,
+                        user_id: this.userId,
+                        title: t.title,
+                        status: t.status,
+                        priority: t.priority,
+                        plan_date: t.date || null,
+                        deadline: t.deadline || null,
+                        start_time: t.startTime || null,
+                        completed_date: t.completedDate || null,
+                        note: t.note || '',
+                        subtasks: t.subtasks || [],
+                        is_from_schedule: t.isFromSchedule || false,
+                        updated_at: new Date().toISOString()
+                    }));
+
+                    const dbTemplates = this.templates.map(t => ({
+                        id: t.id,
+                        user_id: this.userId,
+                        title: t.title,
+                        priority: t.priority || 'normal',
+                        note: t.note || '',
+                        subtasks: t.subtasks || []
+                    }));
+
+                    const dbScheduled = this.scheduledTasks.map(s => ({
+                        id: s.id,
+                        user_id: this.userId,
+                        title: s.title,
+                        enabled: s.enabled,
+                        repeat_days: s.repeatDays || [],
+                        priority: s.priority || 'normal',
+                        note: s.note || '',
+                        subtasks: s.subtasks || [],
+                        last_generated_date: s.lastGeneratedDate || null
+                    }));
+
+                    // 并发执行 Upsert (有则更新，无则插入)
+                    const promises = [];
+                    if (dbTasks.length > 0) promises.push(supabaseClient.from('tasks').upsert(dbTasks));
+                    if (dbTemplates.length > 0) promises.push(supabaseClient.from('templates').upsert(dbTemplates));
+                    if (dbScheduled.length > 0) promises.push(supabaseClient.from('scheduled_tasks').upsert(dbScheduled));
+
+                    await Promise.all(promises);
+
+                    this.isSyncing = 'done';
+                    setTimeout(() => { if (this.isSyncing === 'done') this.isSyncing = 'idle'; }, 3000);
+                } catch (error) { 
                     console.error("保存失败:", error);
                     this.isSyncing = 'error'; 
                 }
-                else {
-                    this.lastUpdatedAt = nowTimestamp;
-                    this.lastCloudStr = currentPureStr;
-                    this.isSyncing = 'done';
-                    setTimeout(() => { if (this.isSyncing === 'done') this.isSyncing = 'idle'; }, 3000);
-                }
-            }, 2000);
+            }, 1500); // 1.5秒防抖
+        },
+
+        // === V4.0 删除数据 (由于 Upsert 无法删除不存在的数据，需单独处理) ===
+        async deleteTask(id) { 
+            if (confirm('确定删除？')) { 
+                try {
+                    if (this.currentView === 'dashboard') {
+                        this.tasks = this.tasks.filter(t => t.id !== id);
+                        await supabaseClient.from('tasks').delete().eq('id', id);
+                    } else if (this.currentView === 'templates') {
+                        this.templates = this.templates.filter(t => t.id !== id);
+                        await supabaseClient.from('templates').delete().eq('id', id);
+                    } else {
+                        this.scheduledTasks = this.scheduledTasks.filter(t => t.id !== id);
+                        await supabaseClient.from('scheduled_tasks').delete().eq('id', id);
+                    }
+                    if (this.activeTask?.id === id) this.activeTask = null; 
+                } catch(e) { console.error("删除失败:", e) }
+            } 
         },
 
         checkScheduledTasks() {
@@ -188,7 +296,6 @@ createApp({
                 while (checkDate <= todayDate) {
                     const dayOfWeek = checkDate.getDay();
                     if (sch.repeatDays.includes(dayOfWeek)) {
-                        // === 修改开始：计算时间并拼接到备注 ===
                         const taskTime = checkDate.toISOString().split('T')[0] + 'T09:00';
                         this.tasks.push({ 
                             id: Date.now() + Math.random().toString(36).substr(2, 5), 
@@ -197,13 +304,12 @@ createApp({
                             priority: sch.priority, 
                             date: taskTime, 
                             deadline: '', 
-                            note: `计划开始时间：${taskTime}\n${sch.note || ''}`, // 拼接备注
+                            note: `计划开始时间：${taskTime}\n${sch.note || ''}`, 
                             subtasks: JSON.parse(JSON.stringify(sch.subtasks)), 
                             expanded: false, 
                             isFromSchedule: true 
                         });
                         addedCount++;
-                        // === 修改结束 ===
                     }
                     checkDate.setDate(checkDate.getDate() + 1);
                 }
@@ -227,13 +333,70 @@ createApp({
             else if (type === 'lastMonth') { this.statsStart = new Date(y, m - 1, 1, 12).toISOString().split('T')[0]; this.statsEnd = new Date(y, m, 0, 12).toISOString().split('T')[0]; }
         },
 
-        handleClearData() { if (confirm(`⚠️ 警告：删除 [${this.accessKey}] 所有数据？`)) { supabaseClient.from('user_data').delete().eq('my_key', this.accessKey).then(() => location.reload()); } },
+        handleClearData() { 
+            alert("该版本由数据库直接接管，防止误操作暂关删库功能。如需清除请逐项删除。"); 
+        },
+
         exportData() { const blob = new Blob([JSON.stringify({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${this.today}.json`; a.click(); },
+        
+        // 普通覆盖导入
         importData(event) {
             const file = event.target.files[0]; if (!file) return;
             const reader = new FileReader(); reader.onload = (e) => {
-                try { const json = JSON.parse(e.target.result); if (json.tasks) this.tasks = json.tasks; if (json.templates) this.templates = json.templates; if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks; alert("导入成功！"); } catch { alert('无效文件'); }
+                try { const json = JSON.parse(e.target.result); if (json.tasks) this.tasks = json.tasks; if (json.templates) this.templates = json.templates; if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks; alert("导入成功！(稍后会自动同步至云端)"); } catch { alert('无效文件'); }
+                event.target.value = '';
             }; reader.readAsText(file);
+        },
+
+        // ⭐ 新增：智能追加导入旧数据
+        async importOldData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const json = JSON.parse(e.target.result);
+                    let importCount = 0;
+
+                    // 1. 合并任务 (去重：跳过 ID 已存在的任务)
+                    if (json.tasks && Array.isArray(json.tasks)) {
+                        const existingIds = new Set(this.tasks.map(t => t.id));
+                        const newTasks = json.tasks.filter(t => !existingIds.has(t.id));
+                        this.tasks = [...this.tasks, ...newTasks];
+                        importCount += newTasks.length;
+                    }
+
+                    // 2. 合并模板
+                    if (json.templates && Array.isArray(json.templates)) {
+                        const existingIds = new Set(this.templates.map(t => t.id));
+                        const newTmpls = json.templates.filter(t => !existingIds.has(t.id));
+                        this.templates = [...this.templates, ...newTmpls];
+                        importCount += newTmpls.length;
+                    }
+
+                    // 3. 合并定时任务
+                    if (json.scheduledTasks && Array.isArray(json.scheduledTasks)) {
+                        const existingIds = new Set(this.scheduledTasks.map(t => t.id));
+                        const newSch = json.scheduledTasks.filter(t => !existingIds.has(t.id));
+                        this.scheduledTasks = [...this.scheduledTasks, ...newSch];
+                        importCount += newSch.length;
+                    }
+
+                    if (importCount > 0) {
+                        alert(`🎉 成功导入了 ${importCount} 条历史数据！系统将自动保存至云端。`);
+                        // vue watcher 会检测到数组变化并自动触发 saveData()
+                    } else {
+                        alert('✅ 文件解析成功，但没有发现新数据（该备份内的数据可能已被导入过）。');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('文件解析失败，请确保您选择的是之前导出的 JSON 备份文件。');
+                }
+                // 清空 input 值，允许连续导入同一个文件
+                event.target.value = '';
+            };
+            reader.readAsText(file);
         },
 
         dragStart(i, e) { this.draggingIndex = i; },
@@ -256,7 +419,6 @@ createApp({
             this.activeTask = task; 
         },
         toggleAll() { this.isAllExpanded = !this.isAllExpanded; this.activeTasks.forEach(t => t.expanded = this.isAllExpanded); },
-        deleteTask(id) { if (confirm('确定删除？')) { if (this.currentView === 'dashboard') this.tasks = this.tasks.filter(t => t.id !== id); else if (this.currentView === 'templates') this.templates = this.templates.filter(t => t.id !== id); else this.scheduledTasks = this.scheduledTasks.filter(t => t.id !== id); if (this.activeTask?.id === id) this.activeTask = null; } },
         loadTemplate(e) { const t = this.templates.find(x => x.id === e.target.value); if (t) { this.modal.data.title = t.title; this.modal.data.priority = t.priority; this.modal.data.subtasks = JSON.parse(JSON.stringify(t.subtasks)); } e.target.value = ''; },
         openModal(task) { this.modal.show = true; this.modal.isEdit = !!task; this.modal.data = task ? JSON.parse(JSON.stringify(task)) : { id: Date.now().toString(), title: '', status: 'todo', priority: 'normal', date: this.currentView === 'dashboard' ? this.viewDate + 'T12:00' : this.today + 'T09:00', subtasks: [], repeatDays: [] }; },
         addModalSubtask() { const v = this.$refs.newSubInput.value.trim(); if (v) { if (!this.modal.data.subtasks) this.modal.data.subtasks = []; this.modal.data.subtasks.push({ title: v, status: 'todo' }); this.$refs.newSubInput.value = ''; } },
@@ -306,7 +468,7 @@ createApp({
 
         confirmAiTask(taskData, msgIndex) {
             this.tasks.push(taskData);
-            this.saveData(); 
+            // 保存由 Watcher 自动接管
             this.chatHistory[msgIndex].confirmed = true;
             this.chatHistory.push({ role: 'assistant', type: 'text', content: `✅ 任务 "${taskData.title}" 已成功添加到列表！` });
             this.$nextTick(() => this.scrollToBottom());
@@ -323,7 +485,6 @@ createApp({
 
             const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-            // 注意：去掉末尾斜杠，fetch 时再拼 /api/chat
             const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
             
             try {
