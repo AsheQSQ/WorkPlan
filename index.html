@@ -4,51 +4,55 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PlanProMax CloudAI</title>
-    <!-- 核心库引入 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <!-- 自定义样式 -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div id="app" v-cloak class="h-screen flex flex-col md:flex-row overflow-hidden text-slate-800">
 
-        <!-- === 1. 登录层 (保持不变) === -->
         <div v-if="!accessKey" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-100/50 backdrop-blur-sm p-4 mobile-modal-container">
             <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border border-white mobile-bottom-sheet">
-                <div class="text-center mb-8">
+                <div class="text-center mb-6">
                     <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white mx-auto shadow-lg mb-4 text-3xl">
-                        <i class="ph-bold ph-check-square-offset"></i>
+                        <i class="ph-bold ph-shield-check"></i>
                     </div>
                     <h1 class="text-2xl font-black text-slate-800">PlanPro Cloud</h1>
-                    <p class="text-sm text-slate-500 mt-2">输入 Key 访问您的云端数据</p>
+                    <p class="text-sm text-slate-500 mt-2">安全云端同步</p>
                 </div>
+                
                 <div class="space-y-4">
+                    <div class="flex bg-slate-100 p-1 rounded-xl mb-4">
+                        <button @click="isRegisterMode = false" :class="!isRegisterMode ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all">登录</button>
+                        <button @click="isRegisterMode = true" :class="isRegisterMode ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all">注册新账号</button>
+                    </div>
+
                     <div>
-                        <label class="text-xs font-bold text-slate-400 uppercase ml-1">Access Key</label>
-                        <input type="text" v-model="inputKey" @keyup.enter="login" placeholder="请输入或创建 Key..." class="w-full mt-1 border-2 border-slate-100 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition font-mono text-center font-bold text-lg text-slate-700 bg-slate-50">
+                        <label class="text-xs font-bold text-slate-400 uppercase ml-1">账号 (Access Key)</label>
+                        <input type="text" v-model="inputKey" placeholder="输入账号" class="w-full mt-1 border-2 border-slate-100 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition font-mono font-bold text-slate-700 bg-slate-50">
                     </div>
-                    <button @click="login" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 active:scale-95 text-lg">进入工作台</button>
-                    <div class="text-center">
-                        <button @click="generateKey" class="text-xs text-blue-500 hover:text-blue-700 font-bold flex items-center justify-center gap-1 mx-auto py-2"><i class="ph-bold ph-magic-wand"></i> 随机生成 Key</button>
+                    <div>
+                        <label class="text-xs font-bold text-slate-400 uppercase ml-1">密码</label>
+                        <input type="password" v-model="inputPassword" @keyup.enter="handleAuth" placeholder="输入密码" class="w-full mt-1 border-2 border-slate-100 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition font-mono font-bold text-slate-700 bg-slate-50">
                     </div>
+                    <button @click="handleAuth" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 active:scale-95 text-lg mt-2">
+                        {{ isRegisterMode ? '注册并进入' : '登录工作台' }}
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- === 2. 主界面 (有 Key 时显示) === -->
         <template v-if="accessKey">
 
-            <!-- 左侧导航 (桌面端) -->
             <aside class="hidden md:flex w-64 bg-white border-r border-slate-200 flex-col z-20 shadow-lg shrink-0">
                 <div class="p-6 flex items-center gap-3 border-b border-slate-100 h-16">
                     <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-md"><i class="ph ph-check-square-offset text-xl"></i></div>
                     <div class="flex-1 min-w-0">
                         <h1 class="text-lg font-bold tracking-tight text-slate-800 leading-tight">PlanPro</h1>
-                        <div class="text-[10px] text-slate-400 font-mono truncate" title="当前Key">🔑 {{ accessKey }}</div>
+                        <div class="text-[10px] text-slate-400 font-mono truncate" title="当前账号">👤 {{ accessKey }}</div>
                     </div>
                 </div>
 
@@ -78,17 +82,16 @@
                     <div class="grid grid-cols-2 gap-2">
                         <button @click="exportData" class="flex items-center justify-center gap-1 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 hover:text-blue-600"><i class="ph ph-download-simple"></i> 备份</button>
                         <button @click="$refs.fileInput.click()" class="flex items-center justify-center gap-1 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 hover:text-blue-600"><i class="ph ph-upload-simple"></i> 恢复</button>
-                        <button @click="logout" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-white border border-red-100 rounded-lg text-xs text-red-500 hover:bg-red-50 font-bold"><i class="ph-bold ph-sign-out"></i> 切换账号</button>
-                        <button @click="handleClearData" class="col-span-2 flex items-center justify-center gap-1 py-2 text-[10px] text-slate-400 hover:text-red-600 mt-1"><i class="ph ph-trash"></i> 删库跑路</button>
+                        <button @click="$refs.importOldInput.click()" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-600 hover:bg-amber-100 font-bold transition-colors"><i class="ph-bold ph-file-arrow-up"></i> 导入旧版 JSON 备份</button>
+                        <button @click="logout" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-white border border-red-100 rounded-lg text-xs text-red-500 hover:bg-red-50 font-bold"><i class="ph-bold ph-sign-out"></i> 安全退出</button>
                         <input type="file" ref="fileInput" @change="importData" class="hidden" accept=".json">
+                        <input type="file" ref="importOldInput" @change="importOldData" class="hidden" accept=".json">
                     </div>
                 </div>
             </aside>
 
-            <!-- 中间内容区 -->
             <main class="flex-1 flex flex-col relative bg-[#f1f5f9] min-w-0 border-r border-slate-200 mobile-pb">
 
-                <!-- View A: 今日看板 -->
                 <template v-if="currentView === 'dashboard'">
                     <header class="h-16 bg-white/90 backdrop-blur px-2 md:px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0 gap-2">
                         <div class="shrink-0">
@@ -114,7 +117,6 @@
                                 <i :class="isAllExpanded ? 'ph ph-arrows-in-line-vertical' : 'ph ph-arrows-out-line-vertical'"></i>
                                 <span class="hidden md:inline">{{ isAllExpanded ? '收起' : '展开' }}</span>
                             </button>
-                            <!-- ⭐ 新增 AI 按钮 -->
                             <button @click="toggleAiPanel" class="h-9 px-3 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-sm font-bold flex items-center gap-1 border border-rose-100 transition-colors">
                                 <i class="ph-fill ph-sparkle"></i> <span class="hidden md:inline">AI</span>
                             </button>
@@ -123,7 +125,6 @@
                     </header>
 
                     <div class="flex-1 overflow-y-auto p-4 space-y-3 scroll-smooth pb-32">
-                        <!-- 预览区、空状态、任务列表逻辑保持不变 (为节省篇幅省略重复代码，逻辑与之前完全一致) -->
                         <div v-if="futurePreviews.length > 0" class="mb-6">
                             <h3 class="text-xs font-bold text-teal-600 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="ph-fill ph-calendar-plus"></i> 待自动生成 <div class="h-px bg-teal-100 flex-1"></div></h3>
                             <div v-for="task in futurePreviews" :key="task.id" @click="selectTask(task)" class="task-card future-card bg-slate-50 rounded-xl shadow-sm border border-slate-200 p-3 flex items-center gap-3 cursor-pointer"><div class="w-6 flex justify-center text-slate-300"><i class="ph-bold ph-clock-countdown text-lg"></i></div><div class="font-bold text-slate-600 text-sm">{{ task.title }}</div></div>
@@ -163,7 +164,6 @@
                     </div>
                 </template>
 
-                <!-- 其他视图 (Templates, Scheduled, Statistics) 保持原样 -->
                 <template v-if="currentView === 'templates'">
                      <header class="h-16 bg-white/90 backdrop-blur px-6 flex justify-between items-center z-10 sticky top-0 border-b border-slate-200 shrink-0">
                         <div><h2 class="text-lg font-bold text-purple-800">任务模板库</h2><div class="text-xs text-slate-500">预设常用任务</div></div>
@@ -235,16 +235,12 @@
                 </template>
             </main>
 
-            <!-- 右侧详情栏 (电脑端) - 现在集成了 AI 对话框 -->
             <aside class="hidden md:flex w-[350px] bg-white border-l border-slate-200 flex-col z-10 shrink-0 h-full shadow-[-4px_0_15px_rgba(0,0,0,0.02)]">
-                
-                <!-- ⭐ 状态 1: AI 面板 (当 showAiPanel 为 true 时覆盖显示) -->
                 <div v-if="showAiPanel" class="flex flex-col h-full bg-rose-50/30">
                      <div class="h-16 border-b border-rose-100 flex items-center justify-between px-6 bg-white shrink-0">
                         <h3 class="font-bold text-rose-600 flex items-center gap-2"><i class="ph-fill ph-sparkle"></i> AI 助手</h3>
                         <button @click="showAiPanel = false" class="text-xs font-bold text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100 flex items-center gap-1"><i class="ph-bold ph-arrow-u-up-left"></i> 返回</button>
                     </div>
-                    <!-- AI 聊天内容 -->
                     <div class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" ref="chatContainer">
                          <div class="flex gap-3">
                             <div class="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0"><i class="ph-fill ph-robot"></i></div>
@@ -279,7 +275,6 @@
                     </div>
                 </div>
 
-                <!-- 状态 2: 任务详情 (AI 面板关闭时显示) -->
                 <template v-else-if="activeTask">
                     <div class="h-16 border-b border-slate-100 flex items-center px-6 bg-slate-50/80">
                         <h3 class="font-bold text-slate-700 flex items-center gap-2"><i class="ph ph-sliders-horizontal"></i> 任务详情</h3>
@@ -312,11 +307,9 @@
                     </div>
                 </template>
 
-                <!-- 状态 3: 空状态 (既无 AI 面板也无任务) -->
                 <div v-else class="h-full flex flex-col items-center justify-center text-center opacity-40 p-10"><i class="ph ph-hand-tap text-5xl text-slate-300 mb-4"></i><h4 class="font-bold text-slate-600 text-lg">点击列表项查看详情<br>或点击 AI 按钮对话</h4></div>
             </aside>
 
-            <!-- === 📱 手机端专属：AI 浮层 (showAiPanel 为 true 时覆盖全屏) === -->
             <div v-if="showAiPanel" class="mobile-detail-overlay md:hidden flex flex-col z-50">
                  <div class="h-14 border-b border-rose-100 flex items-center justify-between px-4 bg-white shrink-0">
                     <button @click="showAiPanel = false" class="text-slate-500 flex items-center gap-1 font-bold"><i class="ph-bold ph-caret-left text-lg"></i> 返回</button>
@@ -324,12 +317,9 @@
                     <button @click="chatHistory = []" class="text-slate-400"><i class="ph ph-trash text-xl"></i></button>
                 </div>
                 <div class="flex-1 overflow-y-auto p-4 space-y-4 pb-24 bg-rose-50/30" ref="chatContainerMobile">
-                    <!-- 手机端聊天内容 (结构与电脑端完全一致) -->
                      <div class="flex gap-3">
                         <div class="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0"><i class="ph-fill ph-robot"></i></div>
-                        <div class="bg-white border border-rose-100 p-3 rounded-2xl rounded-tl-none text-sm text-slate-700 shadow-sm max-w-[85%]">
-                            告诉我你的计划，我来帮你记录。<br><span class="text-xs text-rose-400">例如："周五下午3点开会"</span>
-                        </div>
+                        <div class="bg-white border border-rose-100 p-3 rounded-2xl rounded-tl-none text-sm text-slate-700 shadow-sm max-w-[85%]">告诉我你的计划，我来帮你记录。</div>
                     </div>
                     <div v-for="(msg, index) in chatHistory" :key="index" class="flex gap-3" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
                         <div class="w-8 h-8 rounded-full shrink-0 flex items-center justify-center" :class="msg.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-rose-100 text-rose-600'"><i :class="msg.role === 'user' ? 'ph-fill ph-user' : 'ph-fill ph-robot'"></i></div>
@@ -337,10 +327,8 @@
                             <div v-if="msg.type === 'text'">{{ msg.content }}</div>
                             <div v-if="msg.type === 'loading'" class="flex gap-1 items-center h-5 px-2"><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-75"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-150"></div></div>
                             <div v-if="msg.type === 'task_card'" class="mt-1">
-                                <div class="mb-2 font-bold opacity-80">确认为您添加？</div>
                                 <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 text-left">
                                     <div class="font-bold text-slate-800 text-base mb-1">{{ msg.data.title }}</div>
-                                    <div class="text-xs text-slate-500 flex flex-wrap gap-2"><span class="flex items-center gap-1"><i class="ph-bold ph-calendar-blank"></i> {{ formatDateTime(msg.data.date) }}</span><span v-if="msg.data.priority === 'urgent'" class="text-orange-500 font-bold">紧急</span></div>
                                 </div>
                                 <div class="flex gap-2">
                                     <button @click="confirmAiTask(msg.data, index)" class="flex-1 bg-rose-600 text-white py-1.5 rounded-lg font-bold text-xs hover:bg-rose-700 shadow-sm" :disabled="msg.confirmed">{{ msg.confirmed ? '已添加' : '确认' }}</button>
@@ -358,7 +346,6 @@
                 </div>
             </div>
 
-            <!-- === 📱 手机端专属：任务详情浮层 (保持不变) === -->
             <div v-if="activeTask && !showAiPanel" class="mobile-detail-overlay md:hidden">
                 <div class="h-14 border-b border-slate-100 flex items-center justify-between px-4 bg-white shrink-0">
                     <button @click="activeTask = null" class="text-slate-500 flex items-center gap-1 font-bold"><i class="ph-bold ph-caret-left text-lg"></i> 返回</button>
@@ -366,7 +353,7 @@
                     <div class="flex gap-3"><button v-if="currentView !== 'scheduled'" @click="activeTask.status = 'done'; updateStatus(activeTask); activeTask = null" class="text-green-600"><i class="ph-fill ph-check-circle text-2xl"></i></button><button @click="deleteTask(activeTask.id)" class="text-red-500"><i class="ph-bold ph-trash text-xl"></i></button></div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-5 space-y-6 pb-24 bg-slate-50/50">
-                    <div><div class="flex items-center gap-2 mb-2"><span v-if="isOverdue(activeTask)" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600 border border-red-200">已超时</span><span v-if="activeTask.priority === 'urgent'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 text-orange-600">紧急</span><span v-if="activeTask.priority === 'critical'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600">特急</span></div><h2 class="text-2xl font-black text-slate-800 leading-snug">{{ activeTask.title }}</h2></div>
+                    <div><div class="flex items-center gap-2 mb-2"><span v-if="isOverdue(activeTask)" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600 border border-red-200">已超时</span><span v-if="activeTask.priority === 'urgent'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 text-orange-600">紧急</span></div><h2 class="text-2xl font-black text-slate-800 leading-snug">{{ activeTask.title }}</h2></div>
                     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><label class="text-xs font-bold text-slate-400 uppercase mb-2 block">备注 / 笔记</label><textarea v-model="activeTask.note" rows="5" placeholder="点击输入内容..." class="w-full text-sm text-slate-700 leading-relaxed focus:outline-none resize-none font-mono placeholder-slate-300"></textarea></div>
                     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><label class="text-xs font-bold text-slate-400 uppercase mb-3 block flex justify-between">子任务清单 <span class="text-blue-500" @click="openModal(activeTask)">去编辑</span></label><ul class="space-y-3"><li v-for="sub in activeTask.subtasks" :key="sub.title" class="text-sm flex items-start gap-3"><i :class="sub.status==='done' ? 'ph-fill ph-check-circle text-green-500 text-lg' : 'ph ph-circle text-slate-300 text-lg'"></i><span :class="{'line-through text-slate-400': sub.status==='done', 'text-slate-700': sub.status!=='done'}" class="flex-1 leading-snug">{{ sub.title }}</span></li><li v-if="!activeTask.subtasks || activeTask.subtasks.length===0" class="text-sm text-slate-400 italic text-center py-2">无子任务</li></ul></div>
                     <div class="grid grid-cols-2 gap-3"><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">计划日期</div><div class="font-bold text-slate-700">{{ formatDateTime(activeTask.date) }}</div></div><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">截止时间</div><div class="font-bold" :class="isOverdue(activeTask)?'text-red-500':'text-slate-700'">{{ formatDateTime(activeTask.deadline) || '无' }}</div></div><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">开始时间</div><div class="font-bold text-blue-600">{{ activeTask.startTime ? formatDateTime(activeTask.startTime) : '-' }}</div></div><div class="bg-white p-3 rounded-lg border border-slate-100"><div class="text-xs text-slate-400 mb-1">完成时间</div><div class="font-bold text-green-600">{{ activeTask.completedDate ? formatDateTime(activeTask.completedDate) : '-' }}</div></div></div>
@@ -374,7 +361,6 @@
                 <div class="absolute bottom-6 right-6 z-10"><button @click="openModal(activeTask)" class="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-300 flex items-center justify-center active:scale-90 transition-transform"><i class="ph-bold ph-pencil-simple text-2xl"></i></button></div>
             </div>
 
-            <!-- 移动端底部导航 -->
             <nav class="mobile-nav-bar md:hidden">
                 <button @click="switchView('dashboard')" class="mobile-nav-item" :class="currentView === 'dashboard' ? 'active' : ''"><i class="ph ph-sun"></i>看板</button>
                 <button @click="switchView('templates')" class="mobile-nav-item" :class="currentView === 'templates' ? 'active' : ''"><i class="ph ph-copy"></i>模板</button>
@@ -382,12 +368,10 @@
                 <button @click="switchView('statistics')" class="mobile-nav-item" :class="currentView === 'statistics' ? 'active' : ''"><i class="ph ph-chart-bar"></i>统计</button>
             </nav>
 
-            <!-- 模态框 (保持不变) -->
             <div v-if="modal.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 mobile-modal-container"><div @click="modal.show = false" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"></div><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative flex flex-col max-h-[90vh] overflow-hidden transform transition-all mobile-bottom-sheet"><div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50"><h3 class="font-bold text-lg text-slate-800">{{ modal.isEdit ? '编辑' : '新建' }}</h3><button @click="modal.show = false"><i class="ph ph-x text-xl"></i></button></div><div class="p-6 overflow-y-auto space-y-5"><div v-if="currentView === 'dashboard' && !modal.isEdit && templates.length > 0" class="bg-purple-50 border border-purple-100 rounded-lg p-3"><select @change="loadTemplate($event)" class="w-full bg-white border border-purple-200 rounded px-2 py-1.5 text-sm text-slate-700"><option value="">-- 快速加载模板 --</option><option v-for="t in templates" :key="t.id" :value="t.id">{{ t.title }}</option></select></div><div><label class="text-xs font-bold text-slate-500 uppercase">名称</label><input v-model="modal.data.title" type="text" class="w-full text-lg font-bold border-b-2 border-slate-200 py-1 focus:border-blue-500 outline-none" placeholder="输入名称"></div><div v-if="currentView === 'scheduled'" class="bg-teal-50 p-4 rounded-xl"><label class="text-xs font-bold text-teal-700 uppercase mb-2 block">重复周期</label><div class="flex justify-between gap-1"><label v-for="(dayStr, idx) in ['一','二','三','四','五','六','日']" :key="idx" class="cursor-pointer"><input type="checkbox" :value="idx === 6 ? 0 : idx + 1" v-model="modal.data.repeatDays" class="hidden peer"><span class="block w-8 h-8 rounded-full border border-teal-200 bg-white text-center leading-8 text-sm text-slate-500 peer-checked:bg-teal-500 peer-checked:text-white transition-all">{{ dayStr }}</span></label></div></div><div><label class="text-xs font-bold text-slate-500 uppercase">备注</label><textarea v-model="modal.data.note" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm resize-none"></textarea></div><div class="bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="space-y-2"><div v-for="(sub, index) in modal.data.subtasks" :key="index" class="flex gap-2 items-center group" draggable="true" @dragstart="dragStart(index, $event)" @drop="dragDrop(index)" @dragover.prevent><i class="ph-bold ph-dots-six-vertical text-slate-300 cursor-move"></i><input v-model="sub.title" class="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-sm"><button @click="modal.data.subtasks.splice(index, 1)"><i class="ph-bold ph-trash text-slate-400"></i></button></div><div class="flex gap-2"><input type="text" ref="newSubInput" placeholder="新子任务..." @keydown.enter="addModalSubtask" class="flex-1 bg-transparent border-b border-slate-300 px-2 py-1 text-sm outline-none"><button @click="addModalSubtask" class="text-blue-600 text-sm font-bold">添加</button></div></div></div><div v-if="currentView === 'dashboard'" class="grid grid-cols-2 gap-4"><div><label class="text-xs font-bold text-slate-500 uppercase">计划</label><input type="datetime-local" v-model="modal.data.date" class="w-full border border-slate-200 rounded px-2 py-2 text-sm"></div><div><label class="text-xs font-bold text-slate-500 uppercase">截止</label><input type="datetime-local" v-model="modal.data.deadline" class="w-full border border-slate-200 rounded px-2 py-2 text-sm"></div></div></div><div class="p-4 border-t border-slate-100 flex justify-end gap-3 bg-white"><button @click="modal.show = false" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm">取消</button><button @click="saveTask" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-bold shadow">确认</button></div></div></div>
         </template>
     </div>
 
-    <!-- 业务逻辑 -->
     <script src="script.js"></script>
 </body>
 </html>
