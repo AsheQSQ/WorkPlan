@@ -9,7 +9,6 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            // V4 身份与鉴权
             isRegisterMode: false,
             accessKey: null,
             userId: null,
@@ -20,19 +19,17 @@ createApp({
             saveTimer: null,
             lastDataHash: '',
 
-            // AI 相关
             aiInput: '',
             chatHistory: [],
             showAiPanel: false,
 
-            // 业务数据
             today: new Date().toISOString().split('T')[0],
             viewDate: new Date().toISOString().split('T')[0],
             now: new Date(),
             currentView: 'dashboard',
             
-            groups: [], // 新增分组数据
-            activeGroupId: 'all', // 当前选中的分组页
+            groups: [], 
+            activeGroupId: 'all', 
 
             tasks: [],
             templates: [],
@@ -41,11 +38,10 @@ createApp({
             modal: { show: false, isEdit: false, data: {} },
             isAllExpanded: false,
 
-            // 统计相关数据
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
             statsStatus: 'all',
-            statsGroupId: 'all', // 统计页的分组筛选
+            statsGroupId: 'all', 
             statsRangeType: 'week',
             draggingIndex: null
         }
@@ -76,12 +72,11 @@ createApp({
                 if (t.status === 'done') return false;
                 
                 if (this.viewDate === this.today) {
-                    // 今日看板放行所有未来的任务，不再用 taskDate > this.today 拦截
+                    // 今日看板放行所有未来的任务
                 } else {
                     if (taskDate !== this.viewDate) return false;
                 }
                 
-                // 过滤分组
                 if (this.activeGroupId !== 'all' && (t.groupId || '') !== this.activeGroupId) {
                     return false;
                 }
@@ -131,7 +126,6 @@ createApp({
             if (this.statsStatus === 'incomplete') { list = list.filter(t => t.status === 'todo' || t.status === 'doing'); }
             else if (this.statsStatus !== 'all') { list = list.filter(t => t.status === this.statsStatus); }
             
-            // 新增：分组筛选逻辑
             if (this.statsGroupId !== 'all') {
                 list = list.filter(t => (t.groupId || '') === this.statsGroupId);
             }
@@ -176,6 +170,10 @@ createApp({
                 this.saveData();
             }
         }, 60000);
+
+        // 【新增】移动端/全局返回键拦截（History Trap）
+        window.history.pushState('trap', null, '');
+        window.addEventListener('popstate', this.handlePopState);
     },
     watch: {
         tasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
@@ -184,6 +182,38 @@ createApp({
         groups: { handler() { if (this.userId) this.saveData(); }, deep: true }
     },
     methods: {
+        // --- 核心：返回键拦截逻辑 ---
+        handlePopState(e) {
+            let handled = false;
+            
+            if (this.modal.show) {
+                this.modal.show = false;
+                handled = true;
+            } 
+            else if (this.showAiPanel) {
+                this.showAiPanel = false;
+                handled = true;
+            } 
+            else if (this.activeTask && window.innerWidth <= 768) {
+                this.activeTask = null;
+                handled = true;
+            }
+
+            if (handled) {
+                // 如果拦截了操作，重新推入 Trap 状态，维持在当前页
+                window.history.pushState('trap', null, '');
+            } else {
+                // 如果没有层可以关闭了，说明处于主界面，询问是否退出
+                if (confirm('确定要退出应用吗？')) {
+                    // 允许退出，后退一次跳出当前页
+                    window.history.back();
+                } else {
+                    // 取消退出，重新推入 Trap 保护
+                    window.history.pushState('trap', null, '');
+                }
+            }
+        },
+
         generateDataHash() {
             return JSON.stringify({
                 t: this.tasks.map(({ expanded, ...rest }) => rest),
@@ -262,7 +292,6 @@ createApp({
             } 
         },
 
-        // --- 新增注销账号逻辑 ---
         async deleteAccount() {
             const pwd = prompt("⚠️ 危险操作：注销账号将清空您的所有云端数据！\n请输入您的密码以确认注销：");
             if (pwd === null) return; 
@@ -270,7 +299,6 @@ createApp({
 
             this.isSyncing = 'syncing';
             try {
-                // 1. 二次验证密码
                 const { data, error } = await supabaseClient.rpc('verify_login', {
                     p_access_key: this.accessKey,
                     p_password: pwd
@@ -278,14 +306,12 @@ createApp({
                 
                 if (error) throw error;
                 if (!data) {
-                    this.isSyncing = 'idle'; // 【修复】密码错误时重置同步状态
+                    this.isSyncing = 'idle';
                     return alert("密码错误，注销失败！");
                 }
 
-                // 2. 密码验证成功后执行数据清理
                 if (confirm("密码验证成功。最后一次确认：是否永久删除该账号下的所有数据？（此操作不可逆）")) {
                     
-                    // 【修复】改为顺序(串行)删除，防止并发删除引发数据库外键冲突
                     const tablesToClear = ['tasks', 'templates', 'scheduled_tasks', 'groups'];
                     for (const tableName of tablesToClear) {
                         try {
@@ -295,25 +321,22 @@ createApp({
                         }
                     }
                     
-                    // 最后尝试删除账号主体表
-                    // 注：如果你的用户表不叫 'users' (例如叫 'accounts')，请将下面的 'users' 替换为你的表名
                     try { 
                         await supabaseClient.from('users').delete().eq('id', this.userId); 
                     } catch (e) {
-                        console.warn("清理 user 表失败(可能表名不叫users或受权限保护):", e);
+                        console.warn("清理 user 表失败:", e);
                     }
 
                     this.isSyncing = 'idle';
                     alert("账号数据已成功清空并注销。");
-                    this.logout(true); // 传入 true 跳过退出确认
+                    this.logout(true);
                 } else {
-                    this.isSyncing = 'idle'; // 【修复】取消确认时重置状态
+                    this.isSyncing = 'idle';
                 }
             } catch (e) {
                 console.error("注销异常:", e);
                 alert("注销时发生错误：" + (e.message || "未知网络错误"));
                 this.isSyncing = 'error';
-                // 3秒后恢复默认状态，防止UI永久卡死
                 setTimeout(() => { this.isSyncing = 'idle'; }, 3000);
             }
         },
@@ -326,7 +349,7 @@ createApp({
                     groupsRes = await supabaseClient.from('groups').select('*').eq('user_id', this.userId);
                     if (groupsRes.error) throw groupsRes.error;
                 } catch (e) {
-                    console.warn("未能获取 groups 表，可能是数据库还未执行 SQL，分组功能将仅在本地运行 。", e);
+                    console.warn("未能获取 groups 表:", e);
                 }
 
                 const [tasksRes, templatesRes, scheduledRes] = await Promise.all([
