@@ -18,6 +18,7 @@ createApp({
             
             isSyncing: 'idle',
             saveTimer: null,
+            lastDataHash: '', // ⭐ 新增：用于记录上一次真实保存的数据指纹
 
             // AI 相关
             aiInput: '',
@@ -113,7 +114,29 @@ createApp({
             this.loadData(); 
         }
         this.setStatsRange('week');
-        setInterval(() => { this.now = new Date(); if (this.currentView === 'dashboard' && this.viewDate === this.today) this.checkScheduledTasks(); }, 60000);
+
+        setInterval(() => {
+            this.now = new Date();
+            const nowIso = new Date(this.now.getTime() - (this.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+            let tasksChanged = false;
+
+            // 到时自动开始任务
+            this.tasks.forEach(t => {
+                if (t.status === 'todo' && t.date && t.date <= nowIso) {
+                    t.status = 'doing';
+                    this.updateStatus(t);
+                    tasksChanged = true;
+                }
+            });
+
+            if (this.currentView === 'dashboard' && this.viewDate === this.today) {
+                this.checkScheduledTasks();
+            }
+
+            if (tasksChanged && this.userId) {
+                this.saveData();
+            }
+        }, 60000);
     },
     watch: {
         // 监听前端数组变动，触发数据库分表自动保存
@@ -122,6 +145,16 @@ createApp({
         scheduledTasks: { handler() { if (this.userId) this.saveData(); }, deep: true }
     },
     methods: {
+        // ⭐ 新增：生成剔除 UI 状态后的核心数据指纹
+        generateDataHash() {
+            return JSON.stringify({
+                // 使用解构赋值，把 expanded 字段剥离，只保留实质性的数据字段
+                t: this.tasks.map(({ expanded, ...rest }) => rest),
+                tm: this.templates,
+                s: this.scheduledTasks
+            });
+        },
+
         // === V4.0 安全鉴权 ===
         async handleAuth() {
             if (!this.inputKey.trim() || !this.inputPassword.trim()) return alert("账号和密码不能为空");
@@ -196,6 +229,9 @@ createApp({
                     lastGeneratedDate: s.last_generated_date
                 }));
 
+                // ⭐ 初始化当前的数据指纹基准线
+                this.lastDataHash = this.generateDataHash();
+
                 this.isSyncing = 'done';
                 setTimeout(() => { if (this.isSyncing === 'done') this.isSyncing = 'idle'; }, 2000);
                 this.checkScheduledTasks();
@@ -208,6 +244,14 @@ createApp({
         // === V4.0 保存数据到数据库分表 ===
         saveData() {
             if (!this.userId) return;
+
+            // ⭐ 核心拦截：如果是 expanded 这种界面状态的改变，指纹不会变，直接 return 拦截
+            const currentHash = this.generateDataHash();
+            if (this.lastDataHash === currentHash) {
+                return; 
+            }
+            // 更新最新的指纹
+            this.lastDataHash = currentHash;
             
             this.isSyncing = 'syncing';
             if (this.saveTimer) clearTimeout(this.saveTimer);
@@ -288,15 +332,39 @@ createApp({
             } 
         },
 
+        onScheduleToggle(sch) {
+            if (sch.enabled) {
+                // 如果是从关闭到开启，把 lastGeneratedDate 设为昨天，防止生成历史数据
+                const yesterday = new Date(this.now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                sch.lastGeneratedDate = yesterday.toISOString().split('T')[0];
+            }
+        },
+
         checkScheduledTasks() {
-            const todayDate = new Date(this.today); let addedCount = 0;
+            const todayDate = new Date(this.today); 
+            let addedCount = 0;
+            
             this.scheduledTasks.forEach(sch => {
                 if (!sch.enabled) return;
-                let checkDate = sch.lastGeneratedDate ? new Date(new Date(sch.lastGeneratedDate).setDate(new Date(sch.lastGeneratedDate).getDate() + 1)) : new Date(todayDate);
+                
+                // 确保有最后生成日期兜底（防止被异常开启）
+                if (!sch.lastGeneratedDate) {
+                    const yesterday = new Date(todayDate);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    sch.lastGeneratedDate = yesterday.toISOString().split('T')[0];
+                }
+
+                let checkDate = new Date(sch.lastGeneratedDate);
+                checkDate.setDate(checkDate.getDate() + 1);
+
                 while (checkDate <= todayDate) {
                     const dayOfWeek = checkDate.getDay();
                     if (sch.repeatDays.includes(dayOfWeek)) {
                         const taskTime = checkDate.toISOString().split('T')[0] + 'T09:00';
+                        
+                        const newNote = `${taskTime} ${sch.note || ''}`.trim();
+                        
                         this.tasks.push({ 
                             id: Date.now() + Math.random().toString(36).substr(2, 5), 
                             title: sch.title, 
@@ -304,8 +372,8 @@ createApp({
                             priority: sch.priority, 
                             date: taskTime, 
                             deadline: '', 
-                            note: `计划开始时间：${taskTime}\n${sch.note || ''}`, 
-                            subtasks: JSON.parse(JSON.stringify(sch.subtasks)), 
+                            note: newNote, 
+                            subtasks: JSON.parse(JSON.stringify(sch.subtasks || [])), 
                             expanded: false, 
                             isFromSchedule: true 
                         });
@@ -339,7 +407,6 @@ createApp({
 
         exportData() { const blob = new Blob([JSON.stringify({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${this.today}.json`; a.click(); },
         
-        // 普通覆盖导入
         importData(event) {
             const file = event.target.files[0]; if (!file) return;
             const reader = new FileReader(); reader.onload = (e) => {
@@ -348,7 +415,6 @@ createApp({
             }; reader.readAsText(file);
         },
 
-        // ⭐ 新增：智能追加导入旧数据
         async importOldData(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -359,7 +425,6 @@ createApp({
                     const json = JSON.parse(e.target.result);
                     let importCount = 0;
 
-                    // 1. 合并任务 (去重：跳过 ID 已存在的任务)
                     if (json.tasks && Array.isArray(json.tasks)) {
                         const existingIds = new Set(this.tasks.map(t => t.id));
                         const newTasks = json.tasks.filter(t => !existingIds.has(t.id));
@@ -367,7 +432,6 @@ createApp({
                         importCount += newTasks.length;
                     }
 
-                    // 2. 合并模板
                     if (json.templates && Array.isArray(json.templates)) {
                         const existingIds = new Set(this.templates.map(t => t.id));
                         const newTmpls = json.templates.filter(t => !existingIds.has(t.id));
@@ -375,7 +439,6 @@ createApp({
                         importCount += newTmpls.length;
                     }
 
-                    // 3. 合并定时任务
                     if (json.scheduledTasks && Array.isArray(json.scheduledTasks)) {
                         const existingIds = new Set(this.scheduledTasks.map(t => t.id));
                         const newSch = json.scheduledTasks.filter(t => !existingIds.has(t.id));
@@ -385,7 +448,6 @@ createApp({
 
                     if (importCount > 0) {
                         alert(`🎉 成功导入了 ${importCount} 条历史数据！系统将自动保存至云端。`);
-                        // vue watcher 会检测到数组变化并自动触发 saveData()
                     } else {
                         alert('✅ 文件解析成功，但没有发现新数据（该备份内的数据可能已被导入过）。');
                     }
@@ -393,7 +455,6 @@ createApp({
                     console.error(err);
                     alert('文件解析失败，请确保您选择的是之前导出的 JSON 备份文件。');
                 }
-                // 清空 input 值，允许连续导入同一个文件
                 event.target.value = '';
             };
             reader.readAsText(file);
@@ -401,8 +462,44 @@ createApp({
 
         dragStart(i, e) { this.draggingIndex = i; },
         dragDrop(to) { const arr = this.modal.data.subtasks; const item = arr.splice(this.draggingIndex, 1)[0]; arr.splice(to, 0, item); },
-        toggleSubtask(task, sub) { sub.status = sub.status === 'done' ? 'todo' : 'done'; if (sub.status === 'done' && task.status === 'todo') { task.status = 'doing'; this.updateStatus(task); } },
-        updateStatus(task) { const now = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16); if (task.status === 'doing') { if (!task.startTime) task.startTime = now; task.completedDate = null; } else if (task.status === 'done') { task.completedDate = now; if (task.subtasks) task.subtasks.forEach(s => s.status = 'done'); } else { task.startTime = null; task.completedDate = null; } },
+        
+        toggleSubtask(task, sub) { 
+            sub.status = sub.status === 'done' ? 'todo' : 'done'; 
+            
+            if (sub.status === 'done') {
+                if (task.subtasks.every(s => s.status === 'done')) {
+                    task.status = 'done';
+                    this.updateStatus(task);
+                } else if (task.status === 'todo') {
+                    task.status = 'doing';
+                    this.updateStatus(task);
+                }
+            } else {
+                if (task.status === 'done') {
+                    task.status = 'doing';
+                    this.updateStatus(task);
+                }
+            }
+        },
+
+        updateStatus(task) { 
+            const nowIso = new Date(this.now.getTime() - (this.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16); 
+            
+            if (task.status === 'doing') { 
+                if (!task.startTime) task.startTime = nowIso; 
+                if (!task.date) task.date = nowIso; 
+                task.completedDate = null; 
+            } else if (task.status === 'done') { 
+                if (!task.startTime) task.startTime = nowIso; 
+                if (!task.date) task.date = nowIso;           
+                task.completedDate = nowIso; 
+                if (task.subtasks) task.subtasks.forEach(s => s.status = 'done'); 
+            } else { 
+                task.startTime = null; 
+                task.completedDate = null; 
+            } 
+        },
+
         changeDate(off) { const d = new Date(this.viewDate); d.setDate(d.getDate() + off); this.viewDate = d.toISOString().split('T')[0]; this.activeTask = null; },
         resetToToday() { this.viewDate = this.today; this.checkScheduledTasks(); },
         switchView(view) { this.currentView = view; this.activeTask = null; if (view === 'dashboard') { this.viewDate = this.today; this.checkScheduledTasks(); } },
@@ -468,7 +565,6 @@ createApp({
 
         confirmAiTask(taskData, msgIndex) {
             this.tasks.push(taskData);
-            // 保存由 Watcher 自动接管
             this.chatHistory[msgIndex].confirmed = true;
             this.chatHistory.push({ role: 'assistant', type: 'text', content: `✅ 任务 "${taskData.title}" 已成功添加到列表！` });
             this.$nextTick(() => this.scrollToBottom());
