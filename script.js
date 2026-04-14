@@ -675,11 +675,13 @@ createApp({
 
         async analyzeAiIntent(userText) {
             const nowStr = new Date().toLocaleString('zh-CN', { hour12: false });
-            const systemInstructions = `你是一个任务管理助手。当前时间：${nowStr}。请根据用户的自然语言输入生成一个任务 JSON。包含字段: title, date(YYYY-MM-DDTHH:mm), priority(normal/urgent), note。`;
+            // 1. 强化系统提示词：严厉禁止输出 Markdown 代码块和任何废话
+            const systemInstructions = `你是一个任务管理助手。当前时间：${nowStr}。请严格遵守以下规则：根据用户的输入生成一个 JSON 对象。你必须且只能返回合法的纯 JSON 字符串，绝不能包含任何 markdown 代码块标记（如 \`\`\`json ），也不能包含任何解释性的文字。标准格式范例：{"title":"任务名", "date":"YYYY-MM-DDTHH:mm", "priority":"normal/urgent", "note":""}`;
 
             const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
+            const VERCEL_HOST = '[https://www.yuyuworkplan-pro.xyz](https://www.yuyuworkplan-pro.xyz)'; 
+            let aiRawContent = "";
             
             try {
                 const response = await fetch(`${VERCEL_HOST}/api/chat`, {
@@ -691,10 +693,19 @@ createApp({
                 if (!response.ok) throw new Error(`API 响应错误: ${response.status}`);
 
                 const data = await response.json();
-                const aiRawContent = data.choices?.[0]?.message?.content;
+                aiRawContent = data.choices?.[0]?.message?.content;
                 if (!aiRawContent) return null;
 
-                const cleanJsonStr = aiRawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+                // 2. 双重净化逻辑
+                // 第一步：先扒掉常见的 Markdown 衣服
+                let cleanJsonStr = aiRawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+                
+                // 第二步：暴力提取最外层的 { ... }，无视 AI 附带的任何前言后语
+                const jsonMatch = cleanJsonStr.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    cleanJsonStr = jsonMatch[0];
+                }
+
                 const parsed = JSON.parse(cleanJsonStr);
 
                 return {
@@ -708,8 +719,10 @@ createApp({
                     groupId: this.activeGroupId === 'all' ? '' : this.activeGroupId // AI 创建时默认加入当前组别
                 };
             } catch (error) {
-                console.error("AI 请求失败:", error);
-                throw error;
+                // 在控制台打印原始返回的字符串，方便日后排查到底是哪里的格式坑了我们
+                console.error("AI 原始返回内容:", aiRawContent);
+                console.error("AI 解析失败详细报错:", error);
+                throw new Error("AI 数据格式化失败，请重试或换个说法。");
             }
         }
     }
