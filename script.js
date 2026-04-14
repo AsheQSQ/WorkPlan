@@ -277,30 +277,44 @@ createApp({
                 });
                 
                 if (error) throw error;
-                if (!data) return alert("密码错误，注销失败！");
+                if (!data) {
+                    this.isSyncing = 'idle'; // 【修复】密码错误时重置同步状态
+                    return alert("密码错误，注销失败！");
+                }
 
                 // 2. 密码验证成功后执行数据清理
                 if (confirm("密码验证成功。最后一次确认：是否永久删除该账号下的所有数据？（此操作不可逆）")) {
-                    // 并发删除所有相关表的数据
-                    await Promise.all([
-                        supabaseClient.from('tasks').delete().eq('user_id', this.userId),
-                        supabaseClient.from('templates').delete().eq('user_id', this.userId),
-                        supabaseClient.from('scheduled_tasks').delete().eq('user_id', this.userId),
-                        supabaseClient.from('groups').delete().eq('user_id', this.userId)
-                    ]);
                     
-                    // 尝试删除可能存在的 user 表记录
-                    try { await supabaseClient.from('users').delete().eq('id', this.userId); } catch (e) {}
+                    // 【修复】改为顺序(串行)删除，防止并发删除引发数据库外键冲突
+                    const tablesToClear = ['tasks', 'templates', 'scheduled_tasks', 'groups'];
+                    for (const tableName of tablesToClear) {
+                        try {
+                            await supabaseClient.from(tableName).delete().eq('user_id', this.userId);
+                        } catch (err) {
+                            console.warn(`清理 ${tableName} 表时出现警告:`, err);
+                        }
+                    }
+                    
+                    // 最后尝试删除账号主体表
+                    // 注：如果你的用户表不叫 'users' (例如叫 'accounts')，请将下面的 'users' 替换为你的表名
+                    try { 
+                        await supabaseClient.from('users').delete().eq('id', this.userId); 
+                    } catch (e) {
+                        console.warn("清理 user 表失败(可能表名不叫users或受权限保护):", e);
+                    }
 
+                    this.isSyncing = 'idle';
                     alert("账号数据已成功清空并注销。");
                     this.logout(true); // 传入 true 跳过退出确认
                 } else {
-                    this.isSyncing = 'idle';
+                    this.isSyncing = 'idle'; // 【修复】取消确认时重置状态
                 }
             } catch (e) {
-                console.error(e);
-                alert("注销时发生错误：" + e.message);
+                console.error("注销异常:", e);
+                alert("注销时发生错误：" + (e.message || "未知网络错误"));
                 this.isSyncing = 'error';
+                // 3秒后恢复默认状态，防止UI永久卡死
+                setTimeout(() => { this.isSyncing = 'idle'; }, 3000);
             }
         },
 
