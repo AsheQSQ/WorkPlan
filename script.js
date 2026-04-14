@@ -75,12 +75,14 @@ createApp({
                 if (t.status === 'done') return false;
                 
                 if (this.viewDate === this.today) {
-                    if (taskDate > this.today) return false;
+                    // 【修复点】：移除对未来日期的过滤。
+                    // 只要是在今日看板，显示所有未完成的任务（包含过去超时的、今天的、以及未来的计划）
                 } else {
+                    // 如果切换到历史或未来特定的一天，则只看那一天的任务
                     if (taskDate !== this.viewDate) return false;
                 }
                 
-                // 新增：过滤分组
+                // 过滤分组
                 if (this.activeGroupId !== 'all' && (t.groupId || '') !== this.activeGroupId) {
                     return false;
                 }
@@ -664,95 +666,105 @@ createApp({
         confirmAiTask(taskData, msgIndex) {
             this.tasks.push(taskData);
             this.chatHistory[msgIndex].confirmed = true;
-            // UX 优化：加一句提示，防止用户添加了明天或别组的任务而在当前页面找不到
-            this.chatHistory.push({ 
-                role: 'assistant', 
-                type: 'text', 
-                content: `✅ 任务 "${taskData.title}" 已成功添加到列表！\n(注: 若未在看板显示，请检查任务日期或左上方分组是否匹配)` 
-            });
             this.$nextTick(() => this.scrollToBottom());
         },
 
-        // === 终极 AI 格式化解析逻辑 ===
-        async analyzeAiIntent(userText) {
-            // 修复 1：给 AI 提供包含 'T' 的标准 ISO 格式作为当前时间参考，让 AI 照猫画虎
-            const now = new Date();
-            const nowIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-            
-            // 提示词：强制强调 T 的存在
-            const systemInstructions = `你是一个任务管理助手。当前时间：${nowIso}。请严格遵守以下规则：根据用户的输入生成一个 JSON 对象。你必须且只能返回合法的纯 JSON 字符串，绝不能包含任何 markdown 代码块标记。格式必须严格为：{"title":"任务名", "date":"YYYY-MM-DDTHH:mm", "priority":"normal/urgent", "note":""}。重要警告：日期中的 T 是强制要求的，绝不能用空格或斜杠！`;
+       // === 终极 AI 格式化解析逻辑 ===
+async analyzeAiIntent(userText) {
+    const now = new Date();
+    const nowIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+    
+    // 修复 1：强化系统提示词，明确禁止任何解释性对话
+    const systemInstructions = `你是一个严格的 API 接口，负责将自然语言转化为 JSON。当前时间：${nowIso}。
+请严格遵守以下规则：
+1. 必须且只能输出合法的 JSON 对象。
+2. 绝不能包含任何 markdown 代码块标记 (\`\`\`)。
+3. 绝不能输出任何解释性、引导性文字（如“根据输入”、“这是生成的任务”等）。
+4. 格式必须严格为：{"title":"任务名", "date":"YYYY-MM-DDTHH:mm", "priority":"normal/urgent", "note":""}。
+5. 日期中的 T 是强制要求的，绝不能用空格或斜杠！
+只允许输出 JSON 字符串，不要有其他任何字符。`;
 
-            const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
+    const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
-            let aiRawContent = "";
-            
-            try {
-                const response = await fetch(`${VERCEL_HOST}/api/chat`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: fullMessage })
-                });
+    const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
+    let aiRawContent = "";
+    
+    try {
+        const response = await fetch(`${VERCEL_HOST}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: fullMessage })
+        });
 
-                if (!response.ok) throw new Error(`API 响应错误: ${response.status}`);
+        if (!response.ok) throw new Error(`API 响应错误: ${response.status}`);
 
-                const data = await response.json();
-                aiRawContent = data.choices?.[0]?.message?.content || data.reply || data.response || ""; 
-                
-                if (!aiRawContent) {
-                    console.error("未获取到 AI 回复，API完整返回:", data);
-                    throw new Error("API返回为空");
-                }
+        const data = await response.json();
+        aiRawContent = data.choices?.[0]?.message?.content || data.reply || data.response || ""; 
+        
+        if (!aiRawContent) {
+            console.error("未获取到 AI 回复，API完整返回:", data);
+            throw new Error("API返回为空");
+        }
 
-                let cleanJsonStr = aiRawContent.replace(/`{3}(?:json)?/gi, '').trim();
-                const jsonMatch = cleanJsonStr.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-                if (jsonMatch) cleanJsonStr = jsonMatch[0];
+        // 预清理：去掉可能的 markdown 标记
+        let cleanJsonStr = aiRawContent.replace(/`{3}(?:json)?/gi, '').trim();
+        
+        // 修复 2：更健壮的 JSON 截取逻辑
+        const jsonMatch = cleanJsonStr.match(/\{[\s\S]*\}/);
+        
+        if (jsonMatch) {
+            // 只保留大括号包裹的部分
+            cleanJsonStr = jsonMatch[0];
+        } else {
+            // 如果连大括号都没找到，说明模型完全没按要求输出 JSON
+            console.error("未能找到 JSON 结构, AI 原文:", aiRawContent);
+            throw new Error("AI 未能生成有效的任务格式，请换个说法重试。"); // 抛出对用户友好的错误
+        }
 
-                let parsed;
-                try {
-                    parsed = JSON.parse(cleanJsonStr);
-                } catch (parseErr) {
-                    console.warn("初次 JSON 解析失败，尝试自动修复格式...", parseErr);
-                    const fixedStr = cleanJsonStr
-                        .replace(/“|”/g, '"') 
-                        .replace(/'/g, '"') 
-                        .replace(/,\s*([\}\]])/g, '$1'); 
-                    parsed = JSON.parse(fixedStr);
-                }
+        let parsed;
+        try {
+            parsed = JSON.parse(cleanJsonStr);
+        } catch (parseErr) {
+            console.warn("初次 JSON 解析失败，尝试自动修复格式...", parseErr);
+            const fixedStr = cleanJsonStr
+                .replace(/“|”/g, '"') 
+                .replace(/'/g, '"') 
+                .replace(/,\s*([\}\]])/g, '$1'); 
+            parsed = JSON.parse(fixedStr);
+        }
 
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    parsed = parsed[0];
-                }
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            parsed = parsed[0];
+        }
 
-                // 修复 2：暴力清洗 AI 返回的日期格式，兜底保障
-                let aiDate = parsed.date || this.today + "T09:00";
-                aiDate = aiDate.replace(' ', 'T').replace(/\//g, '-'); // 替换掉空格和斜杠
-                if (aiDate.length === 10) aiDate += "T09:00"; // 如果 AI 只给了日期，补齐时间
-                if (aiDate.length > 16) aiDate = aiDate.substring(0, 16); // 如果 AI 给了秒数，砍掉它
+        let aiDate = parsed.date || this.today + "T09:00";
+        aiDate = aiDate.replace(' ', 'T').replace(/\//g, '-');
+        if (aiDate.length === 10) aiDate += "T09:00";
+        if (aiDate.length > 16) aiDate = aiDate.substring(0, 16);
 
-                // 修复 3：补齐完整的数据结构，防止 Vue 在渲染卡片时报错（比如 expanded）
-                return {
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5), // 增加随机数防止并发冲突
-                    title: parsed.title || "未命名任务",
-                    date: aiDate,
-                    status: 'todo',
-                    priority: parsed.priority || 'normal',
-                    subtasks: [],
-                    note: parsed.note || '',
-                    groupId: this.activeGroupId === 'all' ? '' : this.activeGroupId,
-                    expanded: false,
-                    deadline: '',
-                    startTime: null,
-                    completedDate: null,
-                    isFromSchedule: false
-                };
-            } catch (error) {
-                console.error("===== AI 解析彻底失败 =====");
-                console.error("AI 原始返回字符串:", aiRawContent);
-                console.error("最终报错信息:", error);
-                throw new Error("AI 数据格式化失败，请重试或换个说法。");
-            }
-        },
+        return {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            title: parsed.title || "未命名任务",
+            date: aiDate,
+            status: 'todo',
+            priority: parsed.priority || 'normal',
+            subtasks: [],
+            note: parsed.note || '',
+            groupId: this.activeGroupId === 'all' ? '' : this.activeGroupId,
+            expanded: false,
+            deadline: '',
+            startTime: null,
+            completedDate: null,
+            isFromSchedule: false
+        };
+    } catch (error) {
+        console.error("===== AI 解析失败 =====");
+        console.error("AI 原始返回字符串:", aiRawContent);
+        console.error("最终报错信息:", error);
+        // 这里确保抛出的 Error.message 可以直接被 UI 的 catch 捕获并显示在聊天框中
+        throw new Error(error.message.includes("Unexpected token") ? "AI 生成的数据格式异常，请稍后再试。" : error.message);
+    }
+},
 
         scrollToBottom() {
             const container = this.$refs.chatContainer || this.$refs.chatContainerMobile;
