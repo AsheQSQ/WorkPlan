@@ -18,7 +18,7 @@ createApp({
             
             isSyncing: 'idle',
             saveTimer: null,
-            lastDataHash: '', // ⭐ 新增：用于记录上一次真实保存的数据指纹
+            lastDataHash: '',
 
             // AI 相关
             aiInput: '',
@@ -30,6 +30,10 @@ createApp({
             viewDate: new Date().toISOString().split('T')[0],
             now: new Date(),
             currentView: 'dashboard',
+            
+            groups: [], // 新增分组数据
+            activeGroupId: 'all', // 当前选中的分组页
+
             tasks: [],
             templates: [],
             scheduledTasks: [],
@@ -59,15 +63,31 @@ createApp({
         futurePreviews() {
             if (this.viewDate <= this.today) return [];
             const targetDay = new Date(this.viewDate).getDay();
-            return this.scheduledTasks.filter(s => s.enabled && s.repeatDays.includes(targetDay === 0 ? 7 : targetDay)).map(s => ({ ...s, id: 'preview_' + s.id, status: 'todo', isPreview: true }));
+            let list = this.scheduledTasks.filter(s => s.enabled && s.repeatDays.includes(targetDay === 0 ? 7 : targetDay));
+            if (this.activeGroupId !== 'all') {
+                list = list.filter(t => (t.groupId || '') === this.activeGroupId);
+            }
+            return list.map(s => ({ ...s, id: 'preview_' + s.id, status: 'todo', isPreview: true }));
         },
         activeTasks() {
             const list = this.tasks.filter(t => {
                 const taskDate = t.date.split('T')[0];
                 if (t.status === 'done') return false;
-                if (this.viewDate === this.today) return taskDate <= this.today;
-                else return taskDate === this.viewDate;
+                
+                if (this.viewDate === this.today) {
+                    if (taskDate > this.today) return false;
+                } else {
+                    if (taskDate !== this.viewDate) return false;
+                }
+                
+                // 新增：过滤分组
+                if (this.activeGroupId !== 'all' && (t.groupId || '') !== this.activeGroupId) {
+                    return false;
+                }
+                
+                return true;
             });
+            
             const pMap = { critical: 3, urgent: 2, normal: 1 };
             const sMap = { doing: 2, todo: 1 };
             return list.sort((a, b) => {
@@ -84,8 +104,21 @@ createApp({
         completedTasks() {
             return this.tasks.filter(t => {
                 if (t.status !== 'done') return false;
-                if (this.viewDate === this.today) return (t.date.split('T')[0] === this.today || (t.completedDate && t.completedDate.split('T')[0] === this.today));
-                else return t.date.split('T')[0] === this.viewDate;
+                
+                if (this.viewDate === this.today) {
+                    if (t.date.split('T')[0] !== this.today && !(t.completedDate && t.completedDate.split('T')[0] === this.today)) {
+                        return false;
+                    }
+                } else {
+                    if (t.date.split('T')[0] !== this.viewDate) return false;
+                }
+
+                // 新增：过滤分组
+                if (this.activeGroupId !== 'all' && (t.groupId || '') !== this.activeGroupId) {
+                    return false;
+                }
+
+                return true;
             });
         },
         overdueCount() { return this.tasks.filter(t => t.status !== 'done' && this.isOverdue(t)).length; },
@@ -120,7 +153,6 @@ createApp({
             const nowIso = new Date(this.now.getTime() - (this.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
             let tasksChanged = false;
 
-            // 到时自动开始任务
             this.tasks.forEach(t => {
                 if (t.status === 'todo' && t.date && t.date <= nowIso) {
                     t.status = 'doing';
@@ -139,23 +171,47 @@ createApp({
         }, 60000);
     },
     watch: {
-        // 监听前端数组变动，触发数据库分表自动保存
         tasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
         templates: { handler() { if (this.userId) this.saveData(); }, deep: true },
-        scheduledTasks: { handler() { if (this.userId) this.saveData(); }, deep: true }
+        scheduledTasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
+        groups: { handler() { if (this.userId) this.saveData(); }, deep: true }
     },
     methods: {
-        // ⭐ 新增：生成剔除 UI 状态后的核心数据指纹
         generateDataHash() {
             return JSON.stringify({
-                // 使用解构赋值，把 expanded 字段剥离，只保留实质性的数据字段
                 t: this.tasks.map(({ expanded, ...rest }) => rest),
                 tm: this.templates,
-                s: this.scheduledTasks
+                s: this.scheduledTasks,
+                g: this.groups
             });
         },
 
-        // === V4.0 安全鉴权 ===
+        getGroupName(id) {
+            if (!id) return '无';
+            const g = this.groups.find(x => x.id === id);
+            return g ? g.name : '无';
+        },
+
+        createGroup() {
+            const name = prompt('请输入新工作组名称:');
+            if (name && name.trim()) {
+                const newId = 'g_' + Date.now();
+                this.groups.push({ id: newId, name: name.trim(), user_id: this.userId });
+                this.activeGroupId = newId;
+            }
+        },
+
+        deleteGroup(id) {
+            if (confirm('确定删除该分组吗？此分组下的任务将被归为"无"分组。')) {
+                this.groups = this.groups.filter(g => g.id !== id);
+                this.activeGroupId = 'all';
+                // 清理已被删除分组的任务映射
+                this.tasks.forEach(t => { if (t.groupId === id) t.groupId = ''; });
+                this.templates.forEach(t => { if (t.groupId === id) t.groupId = ''; });
+                this.scheduledTasks.forEach(t => { if (t.groupId === id) t.groupId = ''; });
+            }
+        },
+
         async handleAuth() {
             if (!this.inputKey.trim() || !this.inputPassword.trim()) return alert("账号和密码不能为空");
             
@@ -196,21 +252,30 @@ createApp({
                 this.tasks = []; 
                 this.templates = []; 
                 this.scheduledTasks = []; 
+                this.groups = [];
             } 
         },
 
-        // === V4.0 从数据库分表加载数据 ===
         async loadData() {
             this.isSyncing = 'syncing';
             try {
-                // 并行从三张表读取
+                // 增加容错机制，防止没有 groups 表时网页崩溃
+                let groupsRes = { data: [] };
+                try {
+                    groupsRes = await supabaseClient.from('groups').select('*').eq('user_id', this.userId);
+                    if (groupsRes.error) throw groupsRes.error;
+                } catch (e) {
+                    console.warn("未能获取 groups 表，可能是数据库还未执行 SQL，分组功能将仅在本地运行。", e);
+                }
+
                 const [tasksRes, templatesRes, scheduledRes] = await Promise.all([
                     supabaseClient.from('tasks').select('*').eq('user_id', this.userId),
                     supabaseClient.from('templates').select('*').eq('user_id', this.userId),
                     supabaseClient.from('scheduled_tasks').select('*').eq('user_id', this.userId)
                 ]);
 
-                // 字段映射：数据库 (下划线) -> 前端 (驼峰)
+                this.groups = groupsRes.data || [];
+
                 this.tasks = (tasksRes.data || []).map(t => ({
                     ...t,
                     date: t.plan_date ? t.plan_date.substring(0, 16) : '',
@@ -218,18 +283,22 @@ createApp({
                     startTime: t.start_time ? t.start_time.substring(0, 16) : null,
                     completedDate: t.completed_date ? t.completed_date.substring(0, 16) : null,
                     isFromSchedule: t.is_from_schedule,
+                    groupId: t.group_id || '',
                     expanded: false
                 }));
 
-                this.templates = templatesRes.data || [];
+                this.templates = (templatesRes.data || []).map(t => ({
+                    ...t,
+                    groupId: t.group_id || ''
+                }));
 
                 this.scheduledTasks = (scheduledRes.data || []).map(s => ({
                     ...s,
                     repeatDays: s.repeat_days || [],
-                    lastGeneratedDate: s.last_generated_date
+                    lastGeneratedDate: s.last_generated_date,
+                    groupId: s.group_id || ''
                 }));
 
-                // ⭐ 初始化当前的数据指纹基准线
                 this.lastDataHash = this.generateDataHash();
 
                 this.isSyncing = 'done';
@@ -241,16 +310,11 @@ createApp({
             }
         },
 
-        // === V4.0 保存数据到数据库分表 ===
         saveData() {
             if (!this.userId) return;
 
-            // ⭐ 核心拦截：如果是 expanded 这种界面状态的改变，指纹不会变，直接 return 拦截
             const currentHash = this.generateDataHash();
-            if (this.lastDataHash === currentHash) {
-                return; 
-            }
-            // 更新最新的指纹
+            if (this.lastDataHash === currentHash) return; 
             this.lastDataHash = currentHash;
             
             this.isSyncing = 'syncing';
@@ -258,7 +322,6 @@ createApp({
 
             this.saveTimer = setTimeout(async () => {
                 try {
-                    // 字段映射：前端 (驼峰) -> 数据库 (下划线)
                     const dbTasks = this.tasks.map(t => ({
                         id: t.id,
                         user_id: this.userId,
@@ -272,6 +335,7 @@ createApp({
                         note: t.note || '',
                         subtasks: t.subtasks || [],
                         is_from_schedule: t.isFromSchedule || false,
+                        group_id: t.groupId || null,
                         updated_at: new Date().toISOString()
                     }));
 
@@ -281,7 +345,8 @@ createApp({
                         title: t.title,
                         priority: t.priority || 'normal',
                         note: t.note || '',
-                        subtasks: t.subtasks || []
+                        subtasks: t.subtasks || [],
+                        group_id: t.groupId || null
                     }));
 
                     const dbScheduled = this.scheduledTasks.map(s => ({
@@ -293,14 +358,27 @@ createApp({
                         priority: s.priority || 'normal',
                         note: s.note || '',
                         subtasks: s.subtasks || [],
-                        last_generated_date: s.lastGeneratedDate || null
+                        last_generated_date: s.lastGeneratedDate || null,
+                        group_id: s.groupId || null
                     }));
 
-                    // 并发执行 Upsert (有则更新，无则插入)
+                    const dbGroups = this.groups.map(g => ({
+                        id: g.id,
+                        user_id: this.userId,
+                        name: g.name
+                    }));
+
                     const promises = [];
                     if (dbTasks.length > 0) promises.push(supabaseClient.from('tasks').upsert(dbTasks));
                     if (dbTemplates.length > 0) promises.push(supabaseClient.from('templates').upsert(dbTemplates));
                     if (dbScheduled.length > 0) promises.push(supabaseClient.from('scheduled_tasks').upsert(dbScheduled));
+                    
+                    // 容错：仅当有分组或者没有报错过时才推送 groups
+                    if (dbGroups.length > 0) {
+                        try {
+                            promises.push(supabaseClient.from('groups').upsert(dbGroups));
+                        } catch(e) {}
+                    }
 
                     await Promise.all(promises);
 
@@ -310,10 +388,9 @@ createApp({
                     console.error("保存失败:", error);
                     this.isSyncing = 'error'; 
                 }
-            }, 1500); // 1.5秒防抖
+            }, 1500); 
         },
 
-        // === V4.0 删除数据 (由于 Upsert 无法删除不存在的数据，需单独处理) ===
         async deleteTask(id) { 
             if (confirm('确定删除？')) { 
                 try {
@@ -334,7 +411,6 @@ createApp({
 
         onScheduleToggle(sch) {
             if (sch.enabled) {
-                // 如果是从关闭到开启，把 lastGeneratedDate 设为昨天，防止生成历史数据
                 const yesterday = new Date(this.now);
                 yesterday.setDate(yesterday.getDate() - 1);
                 sch.lastGeneratedDate = yesterday.toISOString().split('T')[0];
@@ -348,7 +424,6 @@ createApp({
             this.scheduledTasks.forEach(sch => {
                 if (!sch.enabled) return;
                 
-                // 确保有最后生成日期兜底（防止被异常开启）
                 if (!sch.lastGeneratedDate) {
                     const yesterday = new Date(todayDate);
                     yesterday.setDate(yesterday.getDate() - 1);
@@ -362,7 +437,6 @@ createApp({
                     const dayOfWeek = checkDate.getDay();
                     if (sch.repeatDays.includes(dayOfWeek)) {
                         const taskTime = checkDate.toISOString().split('T')[0] + 'T09:00';
-                        
                         const newNote = `${taskTime} ${sch.note || ''}`.trim();
                         
                         this.tasks.push({ 
@@ -375,7 +449,8 @@ createApp({
                             note: newNote, 
                             subtasks: JSON.parse(JSON.stringify(sch.subtasks || [])), 
                             expanded: false, 
-                            isFromSchedule: true 
+                            isFromSchedule: true,
+                            groupId: sch.groupId || '' // 继承定时任务的分组
                         });
                         addedCount++;
                     }
@@ -401,16 +476,12 @@ createApp({
             else if (type === 'lastMonth') { this.statsStart = new Date(y, m - 1, 1, 12).toISOString().split('T')[0]; this.statsEnd = new Date(y, m, 0, 12).toISOString().split('T')[0]; }
         },
 
-        handleClearData() { 
-            alert("该版本由数据库直接接管，防止误操作暂关删库功能。如需清除请逐项删除。"); 
-        },
-
-        exportData() { const blob = new Blob([JSON.stringify({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${this.today}.json`; a.click(); },
+        exportData() { const blob = new Blob([JSON.stringify({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks, groups: this.groups }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${this.today}.json`; a.click(); },
         
         importData(event) {
             const file = event.target.files[0]; if (!file) return;
             const reader = new FileReader(); reader.onload = (e) => {
-                try { const json = JSON.parse(e.target.result); if (json.tasks) this.tasks = json.tasks; if (json.templates) this.templates = json.templates; if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks; alert("导入成功！(稍后会自动同步至云端)"); } catch { alert('无效文件'); }
+                try { const json = JSON.parse(e.target.result); if (json.tasks) this.tasks = json.tasks; if (json.templates) this.templates = json.templates; if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks; if(json.groups) this.groups = json.groups; alert("导入成功！(稍后会自动同步至云端)"); } catch { alert('无效文件'); }
                 event.target.value = '';
             }; reader.readAsText(file);
         },
@@ -516,8 +587,36 @@ createApp({
             this.activeTask = task; 
         },
         toggleAll() { this.isAllExpanded = !this.isAllExpanded; this.activeTasks.forEach(t => t.expanded = this.isAllExpanded); },
-        loadTemplate(e) { const t = this.templates.find(x => x.id === e.target.value); if (t) { this.modal.data.title = t.title; this.modal.data.priority = t.priority; this.modal.data.subtasks = JSON.parse(JSON.stringify(t.subtasks)); } e.target.value = ''; },
-        openModal(task) { this.modal.show = true; this.modal.isEdit = !!task; this.modal.data = task ? JSON.parse(JSON.stringify(task)) : { id: Date.now().toString(), title: '', status: 'todo', priority: 'normal', date: this.currentView === 'dashboard' ? this.viewDate + 'T12:00' : this.today + 'T09:00', subtasks: [], repeatDays: [] }; },
+        
+        loadTemplate(e) { 
+            const t = this.templates.find(x => x.id === e.target.value); 
+            if (t) { 
+                this.modal.data.title = t.title; 
+                this.modal.data.priority = t.priority; 
+                this.modal.data.subtasks = JSON.parse(JSON.stringify(t.subtasks)); 
+            } 
+            e.target.value = ''; 
+        },
+        
+        openModal(task) { 
+            this.modal.show = true; 
+            this.modal.isEdit = !!task; 
+            
+            // 默认选中当前的组别，如果处于"无/总览"状态则默认为空
+            const defaultGroupId = this.activeGroupId === 'all' ? '' : this.activeGroupId;
+            
+            this.modal.data = task ? JSON.parse(JSON.stringify(task)) : { 
+                id: Date.now().toString(), 
+                title: '', 
+                status: 'todo', 
+                priority: 'normal', 
+                date: this.currentView === 'dashboard' ? this.viewDate + 'T12:00' : this.today + 'T09:00', 
+                subtasks: [], 
+                repeatDays: [],
+                groupId: defaultGroupId 
+            }; 
+        },
+        
         addModalSubtask() { const v = this.$refs.newSubInput.value.trim(); if (v) { if (!this.modal.data.subtasks) this.modal.data.subtasks = []; this.modal.data.subtasks.push({ title: v, status: 'todo' }); this.$refs.newSubInput.value = ''; } },
         saveTask() { if (!this.modal.data.title) return; const d = this.modal.data; const arr = this.currentView === 'dashboard' ? this.tasks : (this.currentView === 'templates' ? this.templates : this.scheduledTasks); if (this.modal.isEdit) { const i = arr.findIndex(t => t.id === d.id); d.expanded = arr[i].expanded; arr[i] = d; if (this.activeTask?.id === d.id) this.activeTask = d; } else arr.push(d); this.modal.show = false; },
         addInlineSubtask(t, e) { if (e.target.value.trim()) { t.subtasks.push({ title: e.target.value, status: 'todo' }); e.target.value = ''; } },
@@ -531,7 +630,6 @@ createApp({
         getStatsStatusStyle(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700') : (t.status === 'doing' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'); },
         getStatsStatusLabel(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? '超时完成' : '已完成') : { 'todo': '未开始', 'doing': '进行中' }[t.status]; },
 
-        // === AI 助手核心逻辑 ===
         async sendAiMessage() {
             const text = this.aiInput.trim();
             if (!text) return;
@@ -606,7 +704,8 @@ createApp({
                     status: 'todo',
                     priority: parsed.priority || 'normal',
                     subtasks: [],
-                    note: parsed.note || ''
+                    note: parsed.note || '',
+                    groupId: this.activeGroupId === 'all' ? '' : this.activeGroupId // AI 创建时默认加入当前组别
                 };
             } catch (error) {
                 console.error("AI 请求失败:", error);
