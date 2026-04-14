@@ -45,6 +45,7 @@ createApp({
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
             statsStatus: 'all',
+            statsGroupId: 'all', // 统计页的分组筛选
             statsRangeType: 'week',
             draggingIndex: null
         }
@@ -75,10 +76,8 @@ createApp({
                 if (t.status === 'done') return false;
                 
                 if (this.viewDate === this.today) {
-                    // 【修复点】：移除对未来日期的过滤。
-                    // 只要是在今日看板，显示所有未完成的任务（包含过去超时的、今天的、以及未来的计划）
+                    // 今日看板放行所有未来的任务，不再用 taskDate > this.today 拦截
                 } else {
-                    // 如果切换到历史或未来特定的一天，则只看那一天的任务
                     if (taskDate !== this.viewDate) return false;
                 }
                 
@@ -115,7 +114,6 @@ createApp({
                     if (t.date.split('T')[0] !== this.viewDate) return false;
                 }
 
-                // 新增：过滤分组
                 if (this.activeGroupId !== 'all' && (t.groupId || '') !== this.activeGroupId) {
                     return false;
                 }
@@ -129,8 +127,15 @@ createApp({
             const start = this.statsStart;
             const end = this.statsEnd;
             let list = this.tasks.filter(t => { const d = t.date.split('T')[0]; return d >= start && d <= end; });
+            
             if (this.statsStatus === 'incomplete') { list = list.filter(t => t.status === 'todo' || t.status === 'doing'); }
             else if (this.statsStatus !== 'all') { list = list.filter(t => t.status === this.statsStatus); }
+            
+            // 新增：分组筛选逻辑
+            if (this.statsGroupId !== 'all') {
+                list = list.filter(t => (t.groupId || '') === this.statsGroupId);
+            }
+
             list.sort((a, b) => new Date(b.date) - new Date(a.date));
             const total = list.length;
             const done = list.filter(t => t.status === 'done').length;
@@ -207,7 +212,6 @@ createApp({
             if (confirm('确定删除该分组吗？此分组下的任务将被归为"无"分组。')) {
                 this.groups = this.groups.filter(g => g.id !== id);
                 this.activeGroupId = 'all';
-                // 清理已被删除分组的任务映射
                 this.tasks.forEach(t => { if (t.groupId === id) t.groupId = ''; });
                 this.templates.forEach(t => { if (t.groupId === id) t.groupId = ''; });
                 this.scheduledTasks.forEach(t => { if (t.groupId === id) t.groupId = ''; });
@@ -243,8 +247,8 @@ createApp({
             }
         },
         
-        logout() { 
-            if (confirm("确定要退出当前账号吗？")) { 
+        logout(skipConfirm = false) { 
+            if (skipConfirm || confirm("确定要退出当前账号吗？")) { 
                 localStorage.removeItem('planpro_access_key'); 
                 localStorage.removeItem('planpro_user_id'); 
                 this.accessKey = null; 
@@ -258,10 +262,51 @@ createApp({
             } 
         },
 
+        // --- 新增注销账号逻辑 ---
+        async deleteAccount() {
+            const pwd = prompt("⚠️ 危险操作：注销账号将清空您的所有云端数据！\n请输入您的密码以确认注销：");
+            if (pwd === null) return; 
+            if (!pwd.trim()) return alert("密码不能为空");
+
+            this.isSyncing = 'syncing';
+            try {
+                // 1. 二次验证密码
+                const { data, error } = await supabaseClient.rpc('verify_login', {
+                    p_access_key: this.accessKey,
+                    p_password: pwd
+                });
+                
+                if (error) throw error;
+                if (!data) return alert("密码错误，注销失败！");
+
+                // 2. 密码验证成功后执行数据清理
+                if (confirm("密码验证成功。最后一次确认：是否永久删除该账号下的所有数据？（此操作不可逆）")) {
+                    // 并发删除所有相关表的数据
+                    await Promise.all([
+                        supabaseClient.from('tasks').delete().eq('user_id', this.userId),
+                        supabaseClient.from('templates').delete().eq('user_id', this.userId),
+                        supabaseClient.from('scheduled_tasks').delete().eq('user_id', this.userId),
+                        supabaseClient.from('groups').delete().eq('user_id', this.userId)
+                    ]);
+                    
+                    // 尝试删除可能存在的 user 表记录
+                    try { await supabaseClient.from('users').delete().eq('id', this.userId); } catch (e) {}
+
+                    alert("账号数据已成功清空并注销。");
+                    this.logout(true); // 传入 true 跳过退出确认
+                } else {
+                    this.isSyncing = 'idle';
+                }
+            } catch (e) {
+                console.error(e);
+                alert("注销时发生错误：" + e.message);
+                this.isSyncing = 'error';
+            }
+        },
+
         async loadData() {
             this.isSyncing = 'syncing';
             try {
-                // 增加容错机制，防止没有 groups 表时网页崩溃
                 let groupsRes = { data: [] };
                 try {
                     groupsRes = await supabaseClient.from('groups').select('*').eq('user_id', this.userId);
@@ -375,7 +420,6 @@ createApp({
                     if (dbTemplates.length > 0) promises.push(supabaseClient.from('templates').upsert(dbTemplates));
                     if (dbScheduled.length > 0) promises.push(supabaseClient.from('scheduled_tasks').upsert(dbScheduled));
                     
-                    // 容错：仅当有分组或者没有报错过时才推送 groups
                     if (dbGroups.length > 0) {
                         try {
                             promises.push(supabaseClient.from('groups').upsert(dbGroups));
@@ -452,7 +496,7 @@ createApp({
                             subtasks: JSON.parse(JSON.stringify(sch.subtasks || [])), 
                             expanded: false, 
                             isFromSchedule: true,
-                            groupId: sch.groupId || '' // 继承定时任务的分组
+                            groupId: sch.groupId || ''
                         });
                         addedCount++;
                     }
@@ -486,51 +530,6 @@ createApp({
                 try { const json = JSON.parse(e.target.result); if (json.tasks) this.tasks = json.tasks; if (json.templates) this.templates = json.templates; if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks; if(json.groups) this.groups = json.groups; alert("导入成功！(稍后会自动同步至云端)"); } catch { alert('无效文件'); }
                 event.target.value = '';
             }; reader.readAsText(file);
-        },
-
-        async importOldData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const json = JSON.parse(e.target.result);
-                    let importCount = 0;
-
-                    if (json.tasks && Array.isArray(json.tasks)) {
-                        const existingIds = new Set(this.tasks.map(t => t.id));
-                        const newTasks = json.tasks.filter(t => !existingIds.has(t.id));
-                        this.tasks = [...this.tasks, ...newTasks];
-                        importCount += newTasks.length;
-                    }
-
-                    if (json.templates && Array.isArray(json.templates)) {
-                        const existingIds = new Set(this.templates.map(t => t.id));
-                        const newTmpls = json.templates.filter(t => !existingIds.has(t.id));
-                        this.templates = [...this.templates, ...newTmpls];
-                        importCount += newTmpls.length;
-                    }
-
-                    if (json.scheduledTasks && Array.isArray(json.scheduledTasks)) {
-                        const existingIds = new Set(this.scheduledTasks.map(t => t.id));
-                        const newSch = json.scheduledTasks.filter(t => !existingIds.has(t.id));
-                        this.scheduledTasks = [...this.scheduledTasks, ...newSch];
-                        importCount += newSch.length;
-                    }
-
-                    if (importCount > 0) {
-                        alert(`🎉 成功导入了 ${importCount} 条历史数据！系统将自动保存至云端。`);
-                    } else {
-                        alert('✅ 文件解析成功，但没有发现新数据（该备份内的数据可能已被导入过）。');
-                    }
-                } catch (err) {
-                    console.error(err);
-                    alert('文件解析失败，请确保您选择的是之前导出的 JSON 备份文件。');
-                }
-                event.target.value = '';
-            };
-            reader.readAsText(file);
         },
 
         dragStart(i, e) { this.draggingIndex = i; },
@@ -604,7 +603,6 @@ createApp({
             this.modal.show = true; 
             this.modal.isEdit = !!task; 
             
-            // 默认选中当前的组别，如果处于"无/总览"状态则默认为空
             const defaultGroupId = this.activeGroupId === 'all' ? '' : this.activeGroupId;
             
             this.modal.data = task ? JSON.parse(JSON.stringify(task)) : { 
@@ -666,16 +664,19 @@ createApp({
         confirmAiTask(taskData, msgIndex) {
             this.tasks.push(taskData);
             this.chatHistory[msgIndex].confirmed = true;
+            this.chatHistory.push({ 
+                role: 'assistant', 
+                type: 'text', 
+                content: `✅ 任务 "${taskData.title}" 已成功添加到列表！\n(注: 若未在看板显示，请检查任务日期或左上方分组是否匹配)` 
+            });
             this.$nextTick(() => this.scrollToBottom());
         },
 
-       // === 终极 AI 格式化解析逻辑 ===
-async analyzeAiIntent(userText) {
-    const now = new Date();
-    const nowIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-    
-    // 修复 1：强化系统提示词，明确禁止任何解释性对话
-    const systemInstructions = `你是一个严格的 API 接口，负责将自然语言转化为 JSON。当前时间：${nowIso}。
+        async analyzeAiIntent(userText) {
+            const now = new Date();
+            const nowIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+            
+            const systemInstructions = `你是一个严格的 API 接口，负责将自然语言转化为 JSON。当前时间：${nowIso}。
 请严格遵守以下规则：
 1. 必须且只能输出合法的 JSON 对象。
 2. 绝不能包含任何 markdown 代码块标记 (\`\`\`)。
@@ -684,87 +685,81 @@ async analyzeAiIntent(userText) {
 5. 日期中的 T 是强制要求的，绝不能用空格或斜杠！
 只允许输出 JSON 字符串，不要有其他任何字符。`;
 
-    const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
+            const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-    const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
-    let aiRawContent = "";
-    
-    try {
-        const response = await fetch(`${VERCEL_HOST}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: fullMessage })
-        });
+            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
+            let aiRawContent = "";
+            
+            try {
+                const response = await fetch(`${VERCEL_HOST}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: fullMessage })
+                });
 
-        if (!response.ok) throw new Error(`API 响应错误: ${response.status}`);
+                if (!response.ok) throw new Error(`API 响应错误: ${response.status}`);
 
-        const data = await response.json();
-        aiRawContent = data.choices?.[0]?.message?.content || data.reply || data.response || ""; 
-        
-        if (!aiRawContent) {
-            console.error("未获取到 AI 回复，API完整返回:", data);
-            throw new Error("API返回为空");
-        }
+                const data = await response.json();
+                aiRawContent = data.choices?.[0]?.message?.content || data.reply || data.response || ""; 
+                
+                if (!aiRawContent) {
+                    console.error("未获取到 AI 回复，API完整返回:", data);
+                    throw new Error("API返回为空");
+                }
 
-        // 预清理：去掉可能的 markdown 标记
-        let cleanJsonStr = aiRawContent.replace(/`{3}(?:json)?/gi, '').trim();
-        
-        // 修复 2：更健壮的 JSON 截取逻辑
-        const jsonMatch = cleanJsonStr.match(/\{[\s\S]*\}/);
-        
-        if (jsonMatch) {
-            // 只保留大括号包裹的部分
-            cleanJsonStr = jsonMatch[0];
-        } else {
-            // 如果连大括号都没找到，说明模型完全没按要求输出 JSON
-            console.error("未能找到 JSON 结构, AI 原文:", aiRawContent);
-            throw new Error("AI 未能生成有效的任务格式，请换个说法重试。"); // 抛出对用户友好的错误
-        }
+                let cleanJsonStr = aiRawContent.replace(/`{3}(?:json)?/gi, '').trim();
+                const jsonMatch = cleanJsonStr.match(/\{[\s\S]*\}/);
+                
+                if (jsonMatch) {
+                    cleanJsonStr = jsonMatch[0];
+                } else {
+                    console.error("未能找到 JSON 结构, AI 原文:", aiRawContent);
+                    throw new Error("AI 未能生成有效的任务格式，请换个说法重试。"); 
+                }
 
-        let parsed;
-        try {
-            parsed = JSON.parse(cleanJsonStr);
-        } catch (parseErr) {
-            console.warn("初次 JSON 解析失败，尝试自动修复格式...", parseErr);
-            const fixedStr = cleanJsonStr
-                .replace(/“|”/g, '"') 
-                .replace(/'/g, '"') 
-                .replace(/,\s*([\}\]])/g, '$1'); 
-            parsed = JSON.parse(fixedStr);
-        }
+                let parsed;
+                try {
+                    parsed = JSON.parse(cleanJsonStr);
+                } catch (parseErr) {
+                    console.warn("初次 JSON 解析失败，尝试自动修复格式...", parseErr);
+                    const fixedStr = cleanJsonStr
+                        .replace(/“|”/g, '"') 
+                        .replace(/'/g, '"') 
+                        .replace(/,\s*([\}\]])/g, '$1'); 
+                    parsed = JSON.parse(fixedStr);
+                }
 
-        if (Array.isArray(parsed) && parsed.length > 0) {
-            parsed = parsed[0];
-        }
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    parsed = parsed[0];
+                }
 
-        let aiDate = parsed.date || this.today + "T09:00";
-        aiDate = aiDate.replace(' ', 'T').replace(/\//g, '-');
-        if (aiDate.length === 10) aiDate += "T09:00";
-        if (aiDate.length > 16) aiDate = aiDate.substring(0, 16);
+                let aiDate = parsed.date || this.today + "T09:00";
+                aiDate = aiDate.replace(' ', 'T').replace(/\//g, '-'); 
+                if (aiDate.length === 10) aiDate += "T09:00"; 
+                if (aiDate.length > 16) aiDate = aiDate.substring(0, 16); 
 
-        return {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            title: parsed.title || "未命名任务",
-            date: aiDate,
-            status: 'todo',
-            priority: parsed.priority || 'normal',
-            subtasks: [],
-            note: parsed.note || '',
-            groupId: this.activeGroupId === 'all' ? '' : this.activeGroupId,
-            expanded: false,
-            deadline: '',
-            startTime: null,
-            completedDate: null,
-            isFromSchedule: false
-        };
-    } catch (error) {
-        console.error("===== AI 解析失败 =====");
-        console.error("AI 原始返回字符串:", aiRawContent);
-        console.error("最终报错信息:", error);
-        // 这里确保抛出的 Error.message 可以直接被 UI 的 catch 捕获并显示在聊天框中
-        throw new Error(error.message.includes("Unexpected token") ? "AI 生成的数据格式异常，请稍后再试。" : error.message);
-    }
-},
+                return {
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5), 
+                    title: parsed.title || "未命名任务",
+                    date: aiDate,
+                    status: 'todo',
+                    priority: parsed.priority || 'normal',
+                    subtasks: [],
+                    note: parsed.note || '',
+                    groupId: this.activeGroupId === 'all' ? '' : this.activeGroupId,
+                    expanded: false,
+                    deadline: '',
+                    startTime: null,
+                    completedDate: null,
+                    isFromSchedule: false
+                };
+            } catch (error) {
+                console.error("===== AI 解析失败 =====");
+                console.error("AI 原始返回字符串:", aiRawContent);
+                console.error("最终报错信息:", error);
+                throw new Error(error.message.includes("Unexpected token") ? "AI 生成的数据格式异常，请稍后再试。" : error.message);
+            }
+        },
 
         scrollToBottom() {
             const container = this.$refs.chatContainer || this.$refs.chatContainerMobile;
