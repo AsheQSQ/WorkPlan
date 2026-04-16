@@ -9,6 +9,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
+            // V4 身份与鉴权
             isRegisterMode: false,
             accessKey: null,
             userId: null,
@@ -19,17 +20,22 @@ createApp({
             saveTimer: null,
             lastDataHash: '',
 
+            // 深色模式状态
+            isDarkMode: false,
+
+            // AI 相关
             aiInput: '',
             chatHistory: [],
             showAiPanel: false,
 
+            // 业务数据
             today: new Date().toISOString().split('T')[0],
             viewDate: new Date().toISOString().split('T')[0],
             now: new Date(),
             currentView: 'dashboard',
             
-            groups: [], 
-            activeGroupId: 'all', 
+            groups: [], // 新增分组数据
+            activeGroupId: 'all', // 当前选中的分组页
 
             tasks: [],
             templates: [],
@@ -38,20 +44,21 @@ createApp({
             modal: { show: false, isEdit: false, data: {} },
             isAllExpanded: false,
 
+            // 统计相关数据
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
             statsStatus: 'all',
-            statsGroupId: 'all', 
+            statsGroupId: 'all', // 统计页的分组筛选
             statsRangeType: 'week',
             draggingIndex: null
         }
     },
     computed: {
         syncStatus() {
-            if (this.isSyncing === 'syncing') return { text: '同步中...', class: 'bg-blue-50 text-blue-600 border-blue-200', icon: 'ph ph-spinner animate-spin' };
-            if (this.isSyncing === 'done') return { text: '已同步', class: 'bg-green-50 text-green-600 border-green-200', icon: 'ph-bold ph-check' };
-            if (this.isSyncing === 'error') return { text: '同步失败', class: 'bg-red-50 text-red-600 border-red-200', icon: 'ph-bold ph-warning' };
-            return { text: '就绪', class: 'bg-slate-50 text-slate-400 border-slate-200', icon: 'ph ph-cloud' };
+            if (this.isSyncing === 'syncing') return { text: '同步中...', class: 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800', icon: 'ph ph-spinner animate-spin' };
+            if (this.isSyncing === 'done') return { text: '已同步', class: 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800', icon: 'ph-bold ph-check' };
+            if (this.isSyncing === 'error') return { text: '同步失败', class: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800', icon: 'ph-bold ph-warning' };
+            return { text: '就绪', class: 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', icon: 'ph ph-cloud' };
         },
         dateInfo() {
             const date = new Date(this.viewDate);
@@ -139,7 +146,29 @@ createApp({
             return { total, done, doing, todo, rate, list };
         }
     },
+    watch: {
+        isDarkMode(val) {
+            if (val) {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('planpro_theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('planpro_theme', 'light');
+            }
+        },
+        tasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
+        templates: { handler() { if (this.userId) this.saveData(); }, deep: true },
+        scheduledTasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
+        groups: { handler() { if (this.userId) this.saveData(); }, deep: true }
+    },
     mounted() {
+        // 主题初始化
+        const savedTheme = localStorage.getItem('planpro_theme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            this.isDarkMode = true;
+            document.documentElement.classList.add('dark');
+        }
+
         const savedKey = localStorage.getItem('planpro_access_key');
         const savedId = localStorage.getItem('planpro_user_id');
         if (savedKey && savedId) { 
@@ -171,18 +200,15 @@ createApp({
             }
         }, 60000);
 
-        // 【新增】移动端/全局返回键拦截（History Trap）
+        // 移动端/全局返回键拦截（History Trap）
         window.history.pushState('trap', null, '');
         window.addEventListener('popstate', this.handlePopState);
     },
-    watch: {
-        tasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
-        templates: { handler() { if (this.userId) this.saveData(); }, deep: true },
-        scheduledTasks: { handler() { if (this.userId) this.saveData(); }, deep: true },
-        groups: { handler() { if (this.userId) this.saveData(); }, deep: true }
-    },
     methods: {
-        // --- 核心：返回键拦截逻辑 ---
+        toggleTheme() {
+            this.isDarkMode = !this.isDarkMode;
+        },
+
         handlePopState(e) {
             let handled = false;
             
@@ -200,15 +226,11 @@ createApp({
             }
 
             if (handled) {
-                // 如果拦截了操作，重新推入 Trap 状态，维持在当前页
                 window.history.pushState('trap', null, '');
             } else {
-                // 如果没有层可以关闭了，说明处于主界面，询问是否退出
                 if (confirm('确定要退出应用吗？')) {
-                    // 允许退出，后退一次跳出当前页
                     window.history.back();
                 } else {
-                    // 取消退出，重新推入 Trap 保护
                     window.history.pushState('trap', null, '');
                 }
             }
@@ -277,8 +299,8 @@ createApp({
             }
         },
         
-        logout(skipConfirm = false) { 
-            if (skipConfirm || confirm("确定要退出当前账号吗？")) { 
+        logout() { 
+            if (confirm("确定要退出当前账号吗？")) { 
                 localStorage.removeItem('planpro_access_key'); 
                 localStorage.removeItem('planpro_user_id'); 
                 this.accessKey = null; 
@@ -569,6 +591,51 @@ createApp({
             }; reader.readAsText(file);
         },
 
+        async importOldData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const json = JSON.parse(e.target.result);
+                    let importCount = 0;
+
+                    if (json.tasks && Array.isArray(json.tasks)) {
+                        const existingIds = new Set(this.tasks.map(t => t.id));
+                        const newTasks = json.tasks.filter(t => !existingIds.has(t.id));
+                        this.tasks = [...this.tasks, ...newTasks];
+                        importCount += newTasks.length;
+                    }
+
+                    if (json.templates && Array.isArray(json.templates)) {
+                        const existingIds = new Set(this.templates.map(t => t.id));
+                        const newTmpls = json.templates.filter(t => !existingIds.has(t.id));
+                        this.templates = [...this.templates, ...newTmpls];
+                        importCount += newTmpls.length;
+                    }
+
+                    if (json.scheduledTasks && Array.isArray(json.scheduledTasks)) {
+                        const existingIds = new Set(this.scheduledTasks.map(t => t.id));
+                        const newSch = json.scheduledTasks.filter(t => !existingIds.has(t.id));
+                        this.scheduledTasks = [...this.scheduledTasks, ...newSch];
+                        importCount += newSch.length;
+                    }
+
+                    if (importCount > 0) {
+                        alert(`🎉 成功导入了 ${importCount} 条历史数据！系统将自动保存至云端。`);
+                    } else {
+                        alert('✅ 文件解析成功，但没有发现新数据（该备份内的数据可能已被导入过）。');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('文件解析失败，请确保您选择的是之前导出的 JSON 备份文件。');
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        },
+
         dragStart(i, e) { this.draggingIndex = i; },
         dragDrop(to) { const arr = this.modal.data.subtasks; const item = arr.splice(this.draggingIndex, 1)[0]; arr.splice(to, 0, item); },
         
@@ -659,12 +726,12 @@ createApp({
         addInlineSubtask(t, e) { if (e.target.value.trim()) { t.subtasks.push({ title: e.target.value, status: 'todo' }); e.target.value = ''; } },
         isOverdue(t) { if (!t.deadline) return false; const now = new Date(this.now.getTime() - (this.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16); return t.deadline < now; },
         getLatestNoteLine(n) { return n ? n.split('\n').filter(l => l.trim()).pop() : ''; },
-        getStatusStyle(s) { return { 'todo': 'bg-slate-100 text-slate-500', 'doing': 'bg-blue-50 text-blue-600', 'done': 'bg-green-50 text-green-600' }[s]; },
-        getPriorityStyle(p) { return { 'normal': 'text-blue-500', 'urgent': 'text-orange-500', 'critical': 'text-red-500' }[p]; },
+        getStatusStyle(s) { return { 'todo': 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400', 'doing': 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400', 'done': 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400' }[s]; },
+        getPriorityStyle(p) { return { 'normal': 'text-blue-500 dark:text-blue-400', 'urgent': 'text-orange-500 dark:text-orange-400', 'critical': 'text-red-500 dark:text-red-400' }[p]; },
         formatRepeatDays(d) { if (!d || !d.length) return ['无']; const m = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 0: '日' }; return d.sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b)).map(x => '周' + m[x]); },
         formatTimeOnly(d) { return d && d.includes('T') ? d.split('T')[1] : ''; },
         formatDateTime(d) { return d ? d.replace('T', ' ') : ''; },
-        getStatsStatusStyle(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700') : (t.status === 'doing' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'); },
+        getStatsStatusStyle(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400') : (t.status === 'doing' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400'); },
         getStatsStatusLabel(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? '超时完成' : '已完成') : { 'todo': '未开始', 'doing': '进行中' }[t.status]; },
 
         async sendAiMessage() {
@@ -713,14 +780,7 @@ createApp({
             const now = new Date();
             const nowIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
             
-            const systemInstructions = `你是一个严格的 API 接口，负责将自然语言转化为 JSON。当前时间：${nowIso}。
-请严格遵守以下规则：
-1. 必须且只能输出合法的 JSON 对象。
-2. 绝不能包含任何 markdown 代码块标记 (\`\`\`)。
-3. 绝不能输出任何解释性、引导性文字（如“根据输入”、“这是生成的任务”等）。
-4. 格式必须严格为：{"title":"任务名", "date":"YYYY-MM-DDTHH:mm", "priority":"normal/urgent", "note":""}。
-5. 日期中的 T 是强制要求的，绝不能用空格或斜杠！
-只允许输出 JSON 字符串，不要有其他任何字符。`;
+            const systemInstructions = `你是一个任务管理助手。当前时间：${nowIso}。请严格遵守以下规则：根据用户的输入生成一个 JSON 对象。你必须且只能返回合法的纯 JSON 字符串，绝不能包含任何 markdown 代码块标记。格式必须严格为：{"title":"任务名", "date":"YYYY-MM-DDTHH:mm", "priority":"normal/urgent", "note":""}。重要警告：日期中的 T 是强制要求的，绝不能用空格或斜杠！`;
 
             const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
@@ -745,14 +805,8 @@ createApp({
                 }
 
                 let cleanJsonStr = aiRawContent.replace(/`{3}(?:json)?/gi, '').trim();
-                const jsonMatch = cleanJsonStr.match(/\{[\s\S]*\}/);
-                
-                if (jsonMatch) {
-                    cleanJsonStr = jsonMatch[0];
-                } else {
-                    console.error("未能找到 JSON 结构, AI 原文:", aiRawContent);
-                    throw new Error("AI 未能生成有效的任务格式，请换个说法重试。"); 
-                }
+                const jsonMatch = cleanJsonStr.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+                if (jsonMatch) cleanJsonStr = jsonMatch[0];
 
                 let parsed;
                 try {
@@ -791,10 +845,10 @@ createApp({
                     isFromSchedule: false
                 };
             } catch (error) {
-                console.error("===== AI 解析失败 =====");
+                console.error("===== AI 解析彻底失败 =====");
                 console.error("AI 原始返回字符串:", aiRawContent);
                 console.error("最终报错信息:", error);
-                throw new Error(error.message.includes("Unexpected token") ? "AI 生成的数据格式异常，请稍后再试。" : error.message);
+                throw new Error("AI 数据格式化失败，请重试或换个说法。");
             }
         },
 

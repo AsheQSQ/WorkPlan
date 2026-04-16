@@ -3,9 +3,9 @@
 }
 
 body {
-    background-color: #f1f5f9;
     font-family: 'Segoe UI', sans-serif;
     -webkit-tap-highlight-color: transparent;
+    /* 背景色交由 index.html 的 Tailwind 控制，以支持深色模式 */
 }
 
 /* 滚动条美化 */
@@ -19,24 +19,43 @@ body {
     border-radius: 3px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+    background: #475569;
+}
+
 ::-webkit-scrollbar-track {
     background: transparent;
 }
 
-/* 卡片样式 */
+/* === 卡片基础与浅色模式选中状态 === */
 .task-card {
     transition: all 0.2s ease;
     border-left-width: 4px;
     border-left-color: transparent;
 }
 
-    .task-card.active {
-        border-left-color: #2563eb;
-        background-color: #eff6ff;
-        border-color: #bfdbfe;
-        transform: scale-[1.005];
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
+/* 普通任务选中 (蓝色) */
+.task-card.active {
+    border-left-color: #2563eb;
+    background-color: #eff6ff;
+    border-color: #bfdbfe;
+    transform: scale-[1.005];
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* 紧急任务选中 (橙色) */
+.task-card.urgent-card.active {
+    border-left-color: #f97316;
+    background-color: #fff7ed;
+    border-color: #fed7aa;
+}
+
+/* 特急任务选中 (红色) */
+.task-card.critical-card.active {
+    border-left-color: #ef4444;
+    background-color: #fef2f2;
+    border-color: #fecaca;
+}
 
 .future-card {
     border-style: dashed;
@@ -62,6 +81,35 @@ body {
     border-left-color: #cbd5e1;
 }
 
+/* === 深色模式专属卡片样式 === */
+.dark .task-card.active {
+    background-color: rgba(37, 99, 235, 0.15);
+    border-color: #1e3a8a;
+}
+.dark .task-card.urgent-card.active {
+    background-color: rgba(249, 115, 22, 0.15);
+    border-color: #7c2d12;
+}
+.dark .task-card.critical-card.active {
+    background-color: rgba(239, 68, 68, 0.15);
+    border-color: #7f1d1d;
+}
+.dark .template-card.active {
+    background-color: rgba(147, 51, 234, 0.15);
+    border-color: #581c87;
+}
+.dark .scheduled-card.active {
+    background-color: rgba(13, 148, 136, 0.15);
+    border-color: #134e4a;
+}
+.dark .future-card {
+    border-color: #334155;
+}
+.dark .scheduled-card.disabled {
+    background-color: #0f172a;
+    border-left-color: #334155;
+}
+
 /* 动画 */
 .slide-enter-active, .slide-leave-active {
     transition: all 0.3s ease;
@@ -82,6 +130,10 @@ body {
     background-color: #f1f5f9;
     border: 1px dashed #cbd5e1;
 }
+.dark .dragging {
+    background-color: #0f172a;
+    border-color: #475569;
+}
 
 /* 移动端底部导航 */
 .mobile-nav-bar {
@@ -98,6 +150,10 @@ body {
     z-index: 40;
     padding-bottom: env(safe-area-inset-bottom);
 }
+.dark .mobile-nav-bar {
+    background-color: #1e293b;
+    border-top-color: #334155;
+}
 
 .mobile-nav-item {
     flex: 1;
@@ -111,15 +167,21 @@ body {
     font-weight: 600;
     gap: 2px;
 }
+.dark .mobile-nav-item {
+    color: #64748b;
+}
 
-    .mobile-nav-item i {
-        font-size: 1.5rem;
-        margin-bottom: -2px;
-    }
+.mobile-nav-item i {
+    font-size: 1.5rem;
+    margin-bottom: -2px;
+}
 
-    .mobile-nav-item.active {
-        color: #2563eb;
-    }
+.mobile-nav-item.active {
+    color: #2563eb;
+}
+.dark .mobile-nav-item.active {
+    color: #60a5fa;
+}
 
 /* 移动端优化 */
 @media (max-width: 768px) {
@@ -130,14 +192,11 @@ body {
     .mobile-pb {
         padding-bottom: 5rem !important;
     }
-    /* 防止被底部导航遮挡 */
 
-    /* 1. 移动端弹窗容器：强制改为底部对齐 */
     .mobile-modal-container {
-        align-items: flex-end !important; /* 让内容沉底 */
+        align-items: flex-end !important;
     }
 
-    /* 2. 底部滑出面板 (Bottom Sheet) */
     .mobile-bottom-sheet {
         width: 100% !important;
         max-width: 100% !important;
@@ -145,12 +204,11 @@ body {
         border-bottom-right-radius: 0 !important;
         border-top-left-radius: 1.5rem !important;
         border-top-right-radius: 1.5rem !important;
-        max-height: 85vh !important; /* 最大高度85% */
-        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); /* 丝滑上滑动画 */
+        max-height: 85vh !important;
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         margin: 0 !important;
     }
 
-    /* 3. 移动端详情浮层 (全屏覆盖) */
     .mobile-detail-overlay {
         position: fixed;
         inset: 0;
@@ -160,30 +218,21 @@ body {
         flex-direction: column;
         animation: slideInRight 0.25s ease-out;
     }
+    .dark .mobile-detail-overlay {
+        background-color: #1e293b;
+    }
 
-    /* 防止移动端背景滚动 */
     body.modal-open {
         overflow: hidden;
     }
 }
 
-/* 动画定义 */
 @keyframes slideUp {
-    from {
-        transform: translateY(100%);
-    }
-
-    to {
-        transform: translateY(0);
-    }
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
 }
 
 @keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-    }
-
-    to {
-        transform: translateX(0);
-    }
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
 }
