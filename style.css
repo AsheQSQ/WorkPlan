@@ -2,6 +2,11 @@
     display: none;
 }
 
+/* 开启浏览器原生组件的深色模式支持（解决时间选择器和下拉列表看不清的问题） */
+html.dark {
+    color-scheme: dark;
+}
+
 body {
     font-family: 'Segoe UI', sans-serif;
     -webkit-tap-highlight-color: transparent;
