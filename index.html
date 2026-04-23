@@ -36,23 +36,23 @@
                     <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white mx-auto shadow-lg mb-4 text-3xl">
                         <i class="ph-bold ph-shield-check"></i>
                     </div>
-                    <h1 class="text-2xl font-black text-slate-800 dark:text-slate-100">PlanPro Cloud</h1>
+                    <h1 class="text-2xl font-black text-slate-800 dark:text-white">PlanPro Cloud</h1>
                     <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">安全云端同步</p>
                 </div>
                 
                 <div class="space-y-4">
                     <div class="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl mb-4">
-                        <button @click="isRegisterMode = false" :class="!isRegisterMode ? 'bg-white dark:bg-slate-600 shadow text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all">登录</button>
-                        <button @click="isRegisterMode = true" :class="isRegisterMode ? 'bg-white dark:bg-slate-600 shadow text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all">注册新账号</button>
+                        <button @click="isRegisterMode = false" :class="!isRegisterMode ? 'bg-white dark:bg-slate-600 shadow text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-white hover:text-slate-700 dark:hover:text-white'" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all">登录</button>
+                        <button @click="isRegisterMode = true" :class="isRegisterMode ? 'bg-white dark:bg-slate-600 shadow text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-white hover:text-slate-700 dark:hover:text-white'" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all">注册新账号</button>
                     </div>
 
                     <div>
                         <label class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase ml-1">账号 (Access Key)</label>
-                        <input type="text" v-model="inputKey" placeholder="输入账号" class="w-full mt-1 border-2 border-slate-100 dark:border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 transition font-mono font-bold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-900/50">
+                        <input type="text" v-model="inputKey" placeholder="输入账号" class="w-full mt-1 border-2 border-slate-100 dark:border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 transition font-mono font-bold text-slate-700 dark:text-white bg-slate-50 dark:bg-slate-900/50">
                     </div>
                     <div>
                         <label class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase ml-1">密码 </label>
-                        <input type="password" v-model="inputPassword" @keyup.enter="handleAuth" placeholder="输入密码" class="w-full mt-1 border-2 border-slate-100 dark:border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 transition font-mono font-bold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-900/50">
+                        <input type="password" v-model="inputPassword" @keyup.enter="handleAuth" placeholder="输入密码" class="w-full mt-1 border-2 border-slate-100 dark:border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 transition font-mono font-bold text-slate-700 dark:text-white bg-slate-50 dark:bg-slate-900/50">
                     </div>
                     <button @click="handleAuth" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 dark:shadow-none active:scale-95 text-lg mt-2">
                         {{ isRegisterMode ? '注册并进入' : '登录工作台' }}
@@ -67,7 +67,7 @@
                 <div class="p-6 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700/50 h-16">
                     <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-md"><i class="ph ph-check-square-offset text-xl"></i></div>
                     <div class="flex-1 min-w-0">
-                        <h1 class="text-lg font-bold tracking-tight text-slate-800 dark:text-slate-100 leading-tight">PlanPro</h1>
+                        <h1 class="text-lg font-bold tracking-tight text-slate-800 dark:text-white leading-tight">PlanPro</h1>
                         <div class="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate" title="当前账号">👤 {{ accessKey }}</div>
                     </div>
                 </div>
@@ -79,16 +79,16 @@
                 </div>
 
                 <nav class="flex-1 p-4 space-y-2">
-                    <button @click="switchView('dashboard')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'dashboard' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'">
+                    <button @click="switchView('dashboard')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'dashboard' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700/50'">
                         <i class="ph ph-sun text-lg"></i> 今日看板 <span v-if="activeTasks.length > 0" class="ml-auto bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full">{{ activeTasks.length }}</span>
                     </button>
-                    <button @click="switchView('templates')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'templates' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'">
+                    <button @click="switchView('templates')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'templates' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' : 'text-slate-600 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700/50'">
                         <i class="ph ph-copy text-lg"></i> 任务模板
                     </button>
-                    <button @click="switchView('scheduled')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'scheduled' ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'">
+                    <button @click="switchView('scheduled')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'scheduled' ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400' : 'text-slate-600 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700/50'">
                         <i class="ph ph-clock-countdown text-lg"></i> 定时任务 <span v-if="enabledScheduledCount > 0" class="ml-auto bg-teal-100 text-teal-700 text-[10px] px-2 py-0.5 rounded-full">{{ enabledScheduledCount }}</span>
                     </button>
-                    <button @click="switchView('statistics')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'statistics' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'">
+                    <button @click="switchView('statistics')" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-bold" :class="currentView === 'statistics' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'text-slate-600 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700/50'">
                         <i class="ph ph-chart-bar text-lg"></i> 数据统计
                     </button>
                 </nav>
@@ -96,12 +96,12 @@
                 <div class="p-4 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/50">
                     <div class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase mb-2">系统管理</div>
                     <div class="grid grid-cols-2 gap-2">
-                        <button @click="toggleTheme" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:text-blue-600 font-bold transition-colors">
+                        <button @click="toggleTheme" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-white hover:text-blue-600 font-bold transition-colors">
                             <i :class="isDarkMode ? 'ph-bold ph-sun' : 'ph-bold ph-moon'"></i> {{ isDarkMode ? '切换为浅色模式' : '切换为深色模式' }}
                         </button>
                         
-                        <button @click="exportData" class="flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:text-blue-600"><i class="ph ph-download-simple"></i> 备份</button>
-                        <button @click="$refs.fileInput.click()" class="flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:text-blue-600"><i class="ph ph-upload-simple"></i> 恢复</button>
+                        <button @click="exportData" class="flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-white hover:text-blue-600"><i class="ph ph-download-simple"></i> 备份</button>
+                        <button @click="$refs.fileInput.click()" class="flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-white hover:text-blue-600"><i class="ph ph-upload-simple"></i> 恢复</button>
                         <button @click="$refs.importOldInput.click()" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 rounded-lg text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 font-bold transition-colors"><i class="ph-bold ph-file-arrow-up"></i> 导入旧版 JSON 备份</button>
                         <button @click="logout" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-red-100 dark:border-red-900/50 rounded-lg text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 font-bold"><i class="ph-bold ph-sign-out"></i> 安全退出</button>
                         <input type="file" ref="fileInput" @change="importData" class="hidden" accept=".json">
@@ -120,23 +120,23 @@
                         </div>
 
                         <div class="flex items-center justify-center gap-1 md:gap-3 flex-1 min-w-0 overflow-hidden">
-                            <button @click="changeDate(-1)" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"><i class="ph-bold ph-caret-left"></i></button>
+                            <button @click="changeDate(-1)" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white"><i class="ph-bold ph-caret-left"></i></button>
                             <div class="flex flex-col items-center">
                                 <div class="relative group w-full text-center">
                                     <input type="date" v-model="viewDate" class="absolute inset-0 opacity-0 cursor-pointer z-10 w-full">
-                                    <h2 class="text-xs md:text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap">{{ dateInfo.date }} <i class="ph-fill ph-caret-down text-xs text-slate-400"></i></h2>
+                                    <h2 class="text-xs md:text-lg font-bold text-slate-800 dark:text-white flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap">{{ dateInfo.date }} <i class="ph-fill ph-caret-down text-xs text-slate-400"></i></h2>
                                 </div>
                                 <div class="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">{{ dateInfo.week }}</div>
                             </div>
-                            <button @click="changeDate(1)" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"><i class="ph-bold ph-caret-right"></i></button>
+                            <button @click="changeDate(1)" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white"><i class="ph-bold ph-caret-right"></i></button>
                             <button v-if="viewDate !== today" @click="resetToToday" class="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-md font-bold whitespace-nowrap shrink-0">今</button>
                         </div>
 
                         <div class="flex items-center gap-1 shrink-0">
-                            <button @click="toggleTheme" class="md:hidden h-8 w-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors">
+                            <button @click="toggleTheme" class="md:hidden h-8 w-8 flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-colors">
                                 <i class="ph-bold" :class="isDarkMode ? 'ph-sun' : 'ph-moon'"></i>
                             </button>
-                            <button @click="toggleAll" class="h-8 w-8 md:h-9 md:w-auto md:px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-medium flex items-center justify-center gap-2 shrink-0">
+                            <button @click="toggleAll" class="h-8 w-8 md:h-9 md:w-auto md:px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 shrink-0">
                                 <i :class="isAllExpanded ? 'ph ph-arrows-in-line-vertical' : 'ph ph-arrows-out-line-vertical'"></i>
                                 <span class="hidden md:inline">{{ isAllExpanded ? '收起' : '展开' }}</span>
                             </button>
@@ -148,14 +148,14 @@
                     </header>
 
                     <div class="h-12 bg-white/80 dark:bg-slate-800/80 backdrop-blur border-b border-slate-200 dark:border-slate-700 px-3 md:px-6 flex items-center gap-2 overflow-x-auto scrollbar-hide z-10 sticky top-16 shrink-0 shadow-sm">
-                        <button @click="activeGroupId = 'all'" :class="activeGroupId === 'all' ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-800 shadow-md' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'" class="px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all flex-shrink-0">
+                        <button @click="activeGroupId = 'all'" :class="activeGroupId === 'all' ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-800 shadow-md' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-600'" class="px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all flex-shrink-0">
                             <i class="ph-fill ph-squares-four mr-1"></i> 总览
                         </button>
                         
                         <div class="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1 flex-shrink-0"></div>
                         
                         <div v-for="g in groups" :key="g.id" class="flex-shrink-0 flex items-center">
-                            <button @click="activeGroupId = g.id" :class="activeGroupId === g.id ? 'bg-blue-600 text-white shadow-md' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'" class="pl-4 pr-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 group">
+                            <button @click="activeGroupId = g.id" :class="activeGroupId === g.id ? 'bg-blue-600 text-white shadow-md' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700'" class="pl-4 pr-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 group">
                                 <i class="ph-fill ph-folder text-[14px]" :class="activeGroupId === g.id ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'"></i> {{ g.name }}
                                 <i v-if="activeGroupId === g.id" @click.stop="deleteGroup(g.id)" class="ph-bold ph-x hover:text-red-300 ml-1 p-0.5 rounded-full hover:bg-blue-700 transition-colors"></i>
                             </button>
@@ -170,7 +170,7 @@
                         
                         <div v-if="futurePreviews.length > 0" class="mb-6">
                             <h3 class="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="ph-fill ph-calendar-plus"></i> 待自动生成 <div class="h-px bg-teal-100 dark:bg-teal-900/50 flex-1"></div></h3>
-                            <div v-for="task in futurePreviews" :key="task.id" @click="selectTask(task)" class="task-card future-card bg-slate-50 dark:bg-slate-800/50 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-3 flex items-center gap-3 cursor-pointer"><div class="w-6 flex justify-center text-slate-300 dark:text-slate-500"><i class="ph-bold ph-clock-countdown text-lg"></i></div><div class="font-bold text-slate-600 dark:text-slate-300 text-sm">{{ task.title }}</div></div>
+                            <div v-for="task in futurePreviews" :key="task.id" @click="selectTask(task)" class="task-card future-card bg-slate-50 dark:bg-slate-800/50 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-3 flex items-center gap-3 cursor-pointer"><div class="w-6 flex justify-center text-slate-300 dark:text-slate-500"><i class="ph-bold ph-clock-countdown text-lg"></i></div><div class="font-bold text-slate-600 dark:text-white text-sm">{{ task.title }}</div></div>
                         </div>
 
                         <div v-if="activeTasks.length === 0 && completedTasks.length === 0 && futurePreviews.length === 0" class="flex flex-col items-center justify-center h-64 text-slate-400 dark:text-slate-500"><i class="ph ph-coffee text-4xl mb-2"></i><p class="text-sm">该视图下暂无任务</p></div>
@@ -212,15 +212,15 @@
                                     <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none hidden md:block"><i v-if="task.status==='todo'" class="ph ph-circle text-slate-400 dark:text-slate-500"></i><i v-if="task.status==='doing'" class="ph ph-spinner animate-spin text-blue-600 dark:text-blue-400"></i><i v-if="task.status==='done'" class="ph ph-check-circle text-green-600 dark:text-green-400"></i></div>
                                 </div>
                                 
-                                <div class="flex-1 w-0 min-w-0 font-bold text-slate-800 dark:text-slate-200 text-sm flex items-center gap-2 pl-1"><span class="truncate block">{{ task.title }}</span><span class="text-[10px] font-normal text-slate-400 dark:text-slate-400 font-mono bg-slate-100 dark:bg-slate-700 px-1 rounded hidden lg:inline shrink-0">{{ formatTimeOnly(task.date) }}</span></div>
+                                <div class="flex-1 w-0 min-w-0 font-bold text-slate-800 dark:text-white text-sm flex items-center gap-2 pl-1"><span class="truncate block">{{ task.title }}</span><span class="text-[10px] font-normal text-slate-400 dark:text-slate-400 font-mono bg-slate-100 dark:bg-slate-700 px-1 rounded hidden lg:inline shrink-0">{{ formatTimeOnly(task.date) }}</span></div>
                                 <div class="flex-1 min-w-0 border-l border-slate-200 dark:border-slate-700 pl-3 ml-1 hidden lg:block"><div v-if="task.note" class="text-xs text-slate-400 dark:text-slate-500 truncate font-mono">{{ getLatestNoteLine(task.note) }}</div></div>
                                 <div class="flex items-center gap-1 shrink-0 ml-1"><button @click.stop="openModal(task)" class="p-1.5 text-slate-300 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"><i class="ph ph-pencil-simple text-lg"></i></button><button @click.stop="deleteTask(task.id)" class="p-1.5 text-slate-300 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"><i class="ph ph-trash text-lg"></i></button></div>
                             </div>
                             <transition name="slide">
                                 <div v-if="task.expanded" class="bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700/50 px-4 py-3 ml-[0] md:ml-[3.5rem]" @click.stop>
                                     <div class="space-y-2">
-                                        <div v-for="(sub, idx) in task.subtasks" :key="idx" class="flex items-start gap-2"><label class="flex items-center gap-2 cursor-pointer select-none flex-1"><input type="checkbox" :checked="sub.status === 'done'" @change="toggleSubtask(task, sub)" class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500"><span class="text-sm text-slate-700 dark:text-slate-300 transition-all" :class="{'line-through text-slate-400 dark:text-slate-500': sub.status === 'done'}">{{ sub.title }}</span></label><button @click="task.subtasks.splice(idx,1)" class="text-slate-300 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400"><i class="ph ph-x"></i></button></div>
-                                        <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 border-dashed"><i class="ph ph-plus text-slate-400 dark:text-slate-500 text-xs"></i><input type="text" placeholder="添加子步骤..." @keydown.enter="addInlineSubtask(task, $event)" class="bg-transparent text-xs w-full focus:outline-none text-slate-600 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-500"></div>
+                                        <div v-for="(sub, idx) in task.subtasks" :key="idx" class="flex items-start gap-2"><label class="flex items-center gap-2 cursor-pointer select-none flex-1"><input type="checkbox" :checked="sub.status === 'done'" @change="toggleSubtask(task, sub)" class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500"><span class="text-sm text-slate-700 dark:text-white transition-all" :class="{'line-through text-slate-400 dark:text-slate-500': sub.status === 'done'}">{{ sub.title }}</span></label><button @click="task.subtasks.splice(idx,1)" class="text-slate-300 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400"><i class="ph ph-x"></i></button></div>
+                                        <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 border-dashed"><i class="ph ph-plus text-slate-400 dark:text-slate-500 text-xs"></i><input type="text" placeholder="添加子步骤..." @keydown.enter="addInlineSubtask(task, $event)" class="bg-transparent text-xs w-full focus:outline-none text-slate-600 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"></div>
                                     </div>
                                 </div>
                             </transition>
@@ -243,7 +243,7 @@
                             <div class="w-12 shrink-0 flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-lg text-[10px] font-bold py-1 truncate">
                                 {{ getGroupName(tmpl.groupId) }}
                             </div>
-                            <div class="font-bold text-slate-800 dark:text-slate-200 text-sm flex-1">{{ tmpl.title }}</div>
+                            <div class="font-bold text-slate-800 dark:text-white text-sm flex-1">{{ tmpl.title }}</div>
                             <div class="flex items-center gap-1"><button @click.stop="openModal(tmpl)" class="p-1.5 text-slate-300 dark:text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 rounded"><i class="ph ph-pencil-simple text-lg"></i></button><button @click.stop="deleteTask(tmpl.id)" class="p-1.5 text-slate-300 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded"><i class="ph ph-trash text-lg"></i></button></div>
                         </div>
                     </div>
@@ -261,7 +261,7 @@
                             <div class="w-12 shrink-0 flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-lg text-[10px] font-bold py-1 truncate">
                                 {{ getGroupName(sch.groupId) }}
                             </div>
-                            <div class="font-bold text-slate-800 dark:text-slate-200 text-sm flex-1" :class="{'text-slate-400 dark:text-slate-500': !sch.enabled}">{{ sch.title }}</div>
+                            <div class="font-bold text-slate-800 dark:text-white text-sm flex-1" :class="{'text-slate-400 dark:text-slate-500': !sch.enabled}">{{ sch.title }}</div>
                             <div class="flex gap-1"><span v-for="d in formatRepeatDays(sch.repeatDays)" class="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 text-[10px] px-1.5 py-0.5 rounded font-bold border border-teal-100 dark:border-teal-800">{{ d }}</span></div>
                             <button @click.stop="openModal(sch)" class="p-1.5 text-slate-300 dark:text-slate-500 hover:text-teal-600 dark:hover:text-teal-400 rounded"><i class="ph ph-pencil-simple text-lg"></i></button>
                             <button @click.stop="deleteTask(sch.id)" class="p-1.5 text-slate-300 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded"><i class="ph ph-trash text-lg"></i></button>
@@ -302,7 +302,7 @@
                     </header>
                     <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-32 min-h-0" style="-webkit-overflow-scrolling: touch;">
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700"><div class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-1">总任务</div><div class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ statsData.total }}</div></div>
+                            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700"><div class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-1">总任务</div><div class="text-3xl font-black text-slate-700 dark:text-white">{{ statsData.total }}</div></div>
                             <div class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700"><div class="text-xs font-bold text-green-500 dark:text-green-500 uppercase mb-1">已完成</div><div class="text-3xl font-black text-green-600 dark:text-green-400">{{ statsData.done }} <span class="text-sm font-medium text-slate-400">({{ statsData.rate }}%)</span></div></div>
                             <div class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700"><div class="text-xs font-bold text-blue-500 dark:text-blue-500 uppercase mb-1">进行中</div><div class="text-3xl font-black text-blue-600 dark:text-blue-400">{{ statsData.doing }}</div></div>
                             <div class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700"><div class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase mb-1">未开始</div><div class="text-3xl font-black text-gray-600 dark:text-gray-400">{{ statsData.todo }}</div></div>
@@ -311,13 +311,13 @@
                             <div class="px-2 text-xs font-bold text-slate-400">任务明细 ({{ statsStart }} ~ {{ statsEnd }})</div>
                             <div v-if="statsData.list.length === 0" class="text-center py-8 text-slate-400 text-sm">暂无数据</div>
                             <div v-for="t in statsData.list" :key="t.id" @click="selectTask(t)" class="bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col gap-2 active:scale-[0.98] transition-transform">
-                                <div class="flex justify-between items-start"><div class="font-bold text-slate-800 dark:text-slate-200 text-sm truncate flex-1">{{ t.title }}</div><span class="px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ml-2" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span></div>
+                                <div class="flex justify-between items-start"><div class="font-bold text-slate-800 dark:text-white text-sm truncate flex-1">{{ t.title }}</div><span class="px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ml-2" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span></div>
                                 <div class="flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500"><div class="flex gap-2"><span :class="{'text-red-500 dark:text-red-400 font-bold': isOverdue(t)}">截止: {{ formatDateTime(t.deadline) || '-' }}</span></div><div class="font-mono"><span v-if="t.completedDate" class="text-green-600 dark:text-green-500">完: {{ formatDateTime(t.completedDate).split(' ')[0] }}</span><span v-else class="text-slate-300 dark:text-slate-600">未完成</span></div></div>
                             </div>
                         </div>
                         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden hidden md:block">
                             <div class="px-6 py-4 border-b border-slate-50 dark:border-slate-700/50 font-bold text-slate-700 dark:text-slate-200">任务明细 ({{ statsStart }} ~ {{ statsEnd }})</div>
-                            <table class="w-full text-sm text-left"><thead class="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400"><tr><th class="px-6 py-3">名称</th><th class="px-6 py-3">分组</th><th class="px-6 py-3">状态</th><th class="px-6 py-3">计划与截止</th><th class="px-6 py-3">开始与结束</th></tr></thead><tbody class="divide-y divide-slate-100 dark:divide-slate-700/50"><tr v-for="t in statsData.list" :key="t.id" @click="selectTask(t)" class="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer"><td class="px-6 py-3 font-bold text-slate-700 dark:text-slate-200">{{ t.title }}</td><td class="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{{ getGroupName(t.groupId) }}</td><td class="px-6 py-3"><span class="px-2 py-1 rounded text-xs font-bold" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span></td><td class="px-6 py-3 text-xs"><div class="text-slate-600 dark:text-slate-300">{{ formatDateTime(t.date) }}</div><div :class="isOverdue(t)?'text-red-500 dark:text-red-400':'text-slate-400 dark:text-slate-500'">{{ formatDateTime(t.deadline)||'-' }}</div></td><td class="px-6 py-3 text-xs"><div class="text-blue-600 dark:text-blue-400">{{ t.startTime?formatDateTime(t.startTime):'-' }}</div><div class="text-green-600 dark:text-green-400">{{ t.completedDate?formatDateTime(t.completedDate):'-' }}</div></td></tr></tbody></table>
+                            <table class="w-full text-sm text-left"><thead class="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400"><tr><th class="px-6 py-3">名称</th><th class="px-6 py-3">分组</th><th class="px-6 py-3">状态</th><th class="px-6 py-3">计划与截止</th><th class="px-6 py-3">开始与结束</th></tr></thead><tbody class="divide-y divide-slate-100 dark:divide-slate-700/50"><tr v-for="t in statsData.list" :key="t.id" @click="selectTask(t)" class="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer"><td class="px-6 py-3 font-bold text-slate-700 dark:text-white">{{ t.title }}</td><td class="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{{ getGroupName(t.groupId) }}</td><td class="px-6 py-3"><span class="px-2 py-1 rounded text-xs font-bold" :class="getStatsStatusStyle(t)">{{ getStatsStatusLabel(t) }}</span></td><td class="px-6 py-3 text-xs"><div class="text-slate-600 dark:text-slate-300">{{ formatDateTime(t.date) }}</div><div :class="isOverdue(t)?'text-red-500 dark:text-red-400':'text-slate-400 dark:text-slate-500'">{{ formatDateTime(t.deadline)||'-' }}</div></td><td class="px-6 py-3 text-xs"><div class="text-blue-600 dark:text-blue-400">{{ t.startTime?formatDateTime(t.startTime):'-' }}</div><div class="text-green-600 dark:text-green-400">{{ t.completedDate?formatDateTime(t.completedDate):'-' }}</div></td></tr></tbody></table>
                         </div>
                     </div>
                 </template>
@@ -338,13 +338,13 @@
                         </div>
                         <div v-for="(msg, index) in chatHistory" :key="index" class="flex gap-3" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
                             <div class="w-8 h-8 rounded-full shrink-0 flex items-center justify-center" :class="msg.role === 'user' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400' : 'bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400'"><i :class="msg.role === 'user' ? 'ph-fill ph-user' : 'ph-fill ph-robot'"></i></div>
-                            <div class="p-3 rounded-2xl text-sm shadow-sm max-w-[85%]" :class="msg.role === 'user' ? 'bg-blue-600 dark:bg-blue-500 text-white rounded-tr-none' : 'bg-white dark:bg-slate-700 border border-rose-100 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-tl-none'">
+                            <div class="p-3 rounded-2xl text-sm shadow-sm max-w-[85%]" :class="msg.role === 'user' ? 'bg-blue-600 dark:bg-blue-500 text-white rounded-tr-none' : 'bg-white dark:bg-slate-700 border border-rose-100 dark:border-slate-600 text-slate-700 dark:text-white rounded-tl-none'">
                                 <div v-if="msg.type === 'text'">{{ msg.content }}</div>
                                 <div v-if="msg.type === 'loading'" class="flex gap-1 items-center h-5 px-2"><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-75"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-150"></div></div>
                                 <div v-if="msg.type === 'task_card'" class="mt-1">
                                     <div class="mb-2 font-bold opacity-80">确认为您添加？</div>
                                     <div class="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl p-3 mb-3 text-left">
-                                        <div class="font-bold text-slate-800 dark:text-slate-100 text-base mb-1">{{ msg.data.title }}</div>
+                                        <div class="font-bold text-slate-800 dark:text-white text-base mb-1">{{ msg.data.title }}</div>
                                         <div class="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-2"><span class="flex items-center gap-1"><i class="ph-bold ph-calendar-blank"></i> {{ formatDateTime(msg.data.date) }}</span><span v-if="msg.data.priority === 'urgent'" class="text-orange-500 dark:text-orange-400 font-bold">紧急</span></div>
                                     </div>
                                     <div class="flex gap-2">
@@ -357,7 +357,7 @@
                     </div>
                     <div class="p-4 bg-white dark:bg-slate-800 border-t border-rose-100 dark:border-slate-700 shrink-0">
                         <div class="flex gap-2 items-end bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl border border-rose-100 dark:border-slate-700 focus-within:border-rose-400 dark:focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-50 dark:focus-within:ring-rose-900/20 transition-all">
-                            <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" rows="1" placeholder="输入任务..." class="flex-1 bg-transparent border-none focus:ring-0 text-sm resize-none max-h-24 py-2 text-slate-700 dark:text-slate-200"></textarea>
+                            <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" rows="1" placeholder="输入任务..." class="flex-1 bg-transparent border-none focus:ring-0 text-sm resize-none max-h-24 py-2 text-slate-700 dark:text-white"></textarea>
                             <button @click="sendAiMessage" class="p-2 bg-rose-600 dark:bg-rose-500 text-white rounded-lg hover:bg-rose-700 active:scale-95 transition-transform disabled:opacity-50" :disabled="!aiInput.trim()"><i class="ph-bold ph-paper-plane-right"></i></button>
                         </div>
                     </div>
@@ -374,7 +374,7 @@
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">{{ getGroupName(activeTask.groupId) }}</span>
                                 <span v-if="isOverdue(activeTask) && currentView === 'dashboard'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">已超时</span>
                             </div>
-                            <h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 leading-snug">{{ activeTask.title }}</h2>
+                            <h2 class="text-2xl font-black text-slate-800 dark:text-white leading-snug">{{ activeTask.title }}</h2>
                         </div>
                         <div class="flex-1 flex flex-col mb-6 min-h-[150px]">
                             <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">备注 / 笔记</label>
@@ -417,7 +417,7 @@
                             <div v-if="msg.type === 'loading'" class="flex gap-1 items-center h-5 px-2"><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-75"></div><div class="w-1.5 h-1.5 bg-rose-400 rounded-full animate-bounce delay-150"></div></div>
                             <div v-if="msg.type === 'task_card'" class="mt-1">
                                 <div class="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl p-3 mb-3 text-left">
-                                    <div class="font-bold text-slate-800 dark:text-slate-100 text-base mb-1">{{ msg.data.title }}</div>
+                                    <div class="font-bold text-slate-800 dark:text-white text-base mb-1">{{ msg.data.title }}</div>
                                 </div>
                                 <div class="flex gap-2">
                                     <button @click="confirmAiTask(msg.data, index)" class="flex-1 bg-rose-600 dark:bg-rose-500 text-white py-1.5 rounded-lg font-bold text-xs hover:bg-rose-700 dark:hover:bg-rose-600 shadow-sm" :disabled="msg.confirmed">{{ msg.confirmed ? '已添加' : '确认' }}</button>
@@ -429,7 +429,7 @@
                 </div>
                 <div class="p-4 bg-white dark:bg-slate-800 border-t border-rose-100 dark:border-slate-700 shrink-0 mb-[env(safe-area-inset-bottom)]">
                     <div class="flex gap-2 items-end bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl border border-rose-100 dark:border-slate-700 focus-within:border-rose-400 dark:focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-50 dark:focus-within:ring-rose-900/20 transition-all">
-                        <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" rows="1" placeholder="输入任务..." class="flex-1 bg-transparent border-none focus:ring-0 text-sm resize-none max-h-24 py-2 text-slate-700 dark:text-slate-200"></textarea>
+                        <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" rows="1" placeholder="输入任务..." class="flex-1 bg-transparent border-none focus:ring-0 text-sm resize-none max-h-24 py-2 text-slate-700 dark:text-white"></textarea>
                         <button @click="sendAiMessage" class="p-2 bg-rose-600 dark:bg-rose-500 text-white rounded-lg hover:bg-rose-700 active:scale-95 transition-transform disabled:opacity-50" :disabled="!aiInput.trim()"><i class="ph-bold ph-paper-plane-right"></i></button>
                     </div>
                 </div>
@@ -442,7 +442,7 @@
                     <div class="flex gap-3"><button v-if="currentView !== 'scheduled'" @click="activeTask.status = 'done'; updateStatus(activeTask); activeTask = null" class="text-green-600 dark:text-green-500"><i class="ph-fill ph-check-circle text-2xl"></i></button><button @click="deleteTask(activeTask.id)" class="text-red-500 dark:text-red-500"><i class="ph-bold ph-trash text-xl"></i></button></div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-5 space-y-6 pb-24 bg-slate-50/50 dark:bg-slate-900">
-                    <div><div class="flex items-center gap-2 mb-2"><span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">{{ getGroupName(activeTask.groupId) }}</span><span v-if="isOverdue(activeTask)" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800">已超时</span><span v-if="activeTask.priority === 'urgent'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">紧急</span><span v-if="activeTask.priority === 'critical'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">特急</span></div><h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 leading-snug">{{ activeTask.title }}</h2></div>
+                    <div><div class="flex items-center gap-2 mb-2"><span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">{{ getGroupName(activeTask.groupId) }}</span><span v-if="isOverdue(activeTask)" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800">已超时</span><span v-if="activeTask.priority === 'urgent'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">紧急</span><span v-if="activeTask.priority === 'critical'" class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">特急</span></div><h2 class="text-2xl font-black text-slate-800 dark:text-white leading-snug">{{ activeTask.title }}</h2></div>
                     <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm"><label class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 block">备注 / 笔记</label><textarea v-model="activeTask.note" rows="5" placeholder="点击输入内容..." class="w-full bg-transparent text-sm text-slate-700 dark:text-slate-300 leading-relaxed focus:outline-none resize-none font-mono placeholder-slate-300 dark:placeholder-slate-600"></textarea></div>
                     <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm"><label class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-3 block flex justify-between">子任务清单 <span class="text-blue-500 dark:text-blue-400" @click="openModal(activeTask)">去编辑</span></label><ul class="space-y-3"><li v-for="sub in activeTask.subtasks" :key="sub.title" class="text-sm flex items-start gap-3"><i :class="sub.status==='done' ? 'ph-fill ph-check-circle text-green-500 dark:text-green-500 text-lg' : 'ph ph-circle text-slate-300 dark:text-slate-600 text-lg'"></i><span :class="{'line-through text-slate-400 dark:text-slate-500': sub.status==='done', 'text-slate-700 dark:text-slate-300': sub.status!=='done'}" class="flex-1 leading-snug">{{ sub.title }}</span></li><li v-if="!activeTask.subtasks || activeTask.subtasks.length===0" class="text-sm text-slate-400 dark:text-slate-500 italic text-center py-2">无子任务</li></ul></div>
                     <div class="grid grid-cols-2 gap-3"><div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700"><div class="text-xs text-slate-400 dark:text-slate-500 mb-1">计划日期</div><div class="font-bold text-slate-700 dark:text-slate-300">{{ formatDateTime(activeTask.date) }}</div></div><div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700"><div class="text-xs text-slate-400 dark:text-slate-500 mb-1">截止时间</div><div class="font-bold" :class="isOverdue(activeTask)?'text-red-500 dark:text-red-400':'text-slate-700 dark:text-slate-300'">{{ formatDateTime(activeTask.deadline) || '无' }}</div></div><div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700"><div class="text-xs text-slate-400 dark:text-slate-500 mb-1">开始时间</div><div class="font-bold text-blue-600 dark:text-blue-400">{{ activeTask.startTime ? formatDateTime(activeTask.startTime) : '-' }}</div></div><div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700"><div class="text-xs text-slate-400 dark:text-slate-500 mb-1">完成时间</div><div class="font-bold text-green-600 dark:text-green-400">{{ activeTask.completedDate ? formatDateTime(activeTask.completedDate) : '-' }}</div></div></div>
@@ -462,7 +462,7 @@
                 <div class="grid grid-cols-3 gap-2">
                     <div class="col-span-2">
                         <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">名称</label>
-                        <input v-model="modal.data.title" type="text" class="w-full text-lg font-bold border-b-2 border-slate-200 dark:border-slate-600 py-1 focus:border-blue-500 dark:focus:border-blue-500 outline-none bg-transparent text-slate-800 dark:text-slate-100" placeholder="输入名称">
+                        <input v-model="modal.data.title" type="text" class="w-full text-lg font-bold border-b-2 border-slate-200 dark:border-slate-600 py-1 focus:border-blue-500 dark:focus:border-blue-500 outline-none bg-transparent text-slate-800 dark:text-white" placeholder="输入名称">
                     </div>
                     <div>
                         <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">所属分组</label>
