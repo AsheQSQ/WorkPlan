@@ -15,7 +15,7 @@ createApp({
             userId: null,
             inputKey: '',
             inputPassword: '',
-            
+
             isSyncing: 'idle',
             saveTimer: null,
             lastDataHash: '',
@@ -33,7 +33,7 @@ createApp({
             viewDate: new Date().toISOString().split('T')[0],
             now: new Date(),
             currentView: 'dashboard',
-            
+
             groups: [], // 新增分组数据
             activeGroupId: 'all', // 当前选中的分组页
 
@@ -43,6 +43,13 @@ createApp({
             activeTask: null,
             modal: { show: false, isEdit: false, data: {} },
             isAllExpanded: false,
+
+            mdModal: {
+                show: false,
+                mode: 'view', // 'edit' 或者是 'view'
+                data: { id: '', type: 'markdown', title: '', content: '' },
+                targetTask: null
+            },
 
             // 统计相关数据
             statsStart: new Date().toISOString().split('T')[0],
@@ -73,24 +80,30 @@ createApp({
             }
             return list.map(s => ({ ...s, id: 'preview_' + s.id, status: 'todo', isPreview: true }));
         },
+        // 渲染 Markdown 的计算属性
+        renderedMarkdown() {
+            if (!this.mdModal.data.content) return '<p class="text-slate-400 italic">空文档...</p>';
+            // 调用 marked 库解析 markdown 文本为 html
+            return marked.parse(this.mdModal.data.content);
+        },
         activeTasks() {
             const list = this.tasks.filter(t => {
                 const taskDate = t.date.split('T')[0];
                 if (t.status === 'done') return false;
-                
+
                 if (this.viewDate === this.today) {
                     // 今日看板放行所有未来的任务
                 } else {
                     if (taskDate !== this.viewDate) return false;
                 }
-                
+
                 if (this.activeGroupId !== 'all' && (t.groupId || '') !== this.activeGroupId) {
                     return false;
                 }
-                
+
                 return true;
             });
-            
+
             const pMap = { critical: 3, urgent: 2, normal: 1 };
             const sMap = { doing: 2, todo: 1 };
             return list.sort((a, b) => {
@@ -107,7 +120,7 @@ createApp({
         completedTasks() {
             return this.tasks.filter(t => {
                 if (t.status !== 'done') return false;
-                
+
                 if (this.viewDate === this.today) {
                     if (t.date.split('T')[0] !== this.today && !(t.completedDate && t.completedDate.split('T')[0] === this.today)) {
                         return false;
@@ -129,10 +142,10 @@ createApp({
             const start = this.statsStart;
             const end = this.statsEnd;
             let list = this.tasks.filter(t => { const d = t.date.split('T')[0]; return d >= start && d <= end; });
-            
+
             if (this.statsStatus === 'incomplete') { list = list.filter(t => t.status === 'todo' || t.status === 'doing'); }
             else if (this.statsStatus !== 'all') { list = list.filter(t => t.status === this.statsStatus); }
-            
+
             if (this.statsGroupId !== 'all') {
                 list = list.filter(t => (t.groupId || '') === this.statsGroupId);
             }
@@ -171,10 +184,10 @@ createApp({
 
         const savedKey = localStorage.getItem('planpro_access_key');
         const savedId = localStorage.getItem('planpro_user_id');
-        if (savedKey && savedId) { 
-            this.accessKey = savedKey; 
+        if (savedKey && savedId) {
+            this.accessKey = savedKey;
             this.userId = savedId;
-            this.loadData(); 
+            this.loadData();
         }
         this.setStatsRange('week');
 
@@ -208,18 +221,78 @@ createApp({
         toggleTheme() {
             this.isDarkMode = !this.isDarkMode;
         },
+        // ====== 新增的 Markdown 附件交互逻辑 ======
+
+        openMdEditor(task, doc = null) {
+            if (!task.attachments) {
+                task.attachments = [];
+            }
+            this.mdModal.targetTask = task;
+
+            if (doc) {
+                // 打开现有的文档：克隆一份数据用于展示
+                this.mdModal.data = JSON.parse(JSON.stringify(doc));
+                this.mdModal.mode = 'view';
+            } else {
+                // 新建文档
+                this.mdModal.data = {
+                    id: 'doc_' + Date.now(),
+                    type: 'markdown',
+                    title: '',
+                    content: '',
+                    created_at: new Date().toISOString()
+                };
+                this.mdModal.mode = 'edit';
+            }
+            this.mdModal.show = true;
+        },
+
+        saveMdDoc() {
+            const task = this.mdModal.targetTask;
+            if (!task.attachments) task.attachments = [];
+
+            // 查找是否已经存在这个文档
+            const index = task.attachments.findIndex(a => a.id === this.mdModal.data.id);
+
+            if (index > -1) {
+                // 更新旧文档
+                task.attachments[index] = JSON.parse(JSON.stringify(this.mdModal.data));
+            } else {
+                // 插入新文档
+                task.attachments.push(JSON.parse(JSON.stringify(this.mdModal.data)));
+            }
+
+            // 触发你的数据库同步保存操作 (借用你原有的 updateStatus 方法来触发保存)
+            this.updateStatus(task);
+
+            // 保存后切回阅览模式
+            this.mdModal.mode = 'view';
+        },
+
+        closeMdEditor() {
+            this.mdModal.show = false;
+            this.mdModal.targetTask = null;
+        },
+
+        deleteAttachment(task, docId) {
+            if (confirm('确定要永久删除这份文档吗？')) {
+                task.attachments = task.attachments.filter(a => a.id !== docId);
+                // 触发保存
+                this.updateStatus(task);
+            }
+        },
 
         handlePopState(e) {
             let handled = false;
-            
+
             if (this.modal.show) {
                 this.modal.show = false;
                 handled = true;
-            } 
+            }
             else if (this.showAiPanel) {
                 this.showAiPanel = false;
                 handled = true;
-            } 
+            }
             else if (this.activeTask && window.innerWidth <= 768) {
                 this.activeTask = null;
                 handled = true;
@@ -272,7 +345,7 @@ createApp({
 
         async handleAuth() {
             if (!this.inputKey.trim() || !this.inputPassword.trim()) return alert("账号和密码不能为空");
-            
+
             this.isSyncing = 'syncing';
             try {
                 if (this.isRegisterMode) {
@@ -286,11 +359,11 @@ createApp({
                     if (!data) return alert("账号或密码错误");
                     this.userId = data;
                 }
-                
+
                 this.accessKey = this.inputKey.trim();
                 localStorage.setItem('planpro_access_key', this.accessKey);
                 localStorage.setItem('planpro_user_id', this.userId);
-                
+
                 await this.loadData();
             } catch (e) {
                 console.error(e);
@@ -298,25 +371,25 @@ createApp({
                 this.isSyncing = 'error';
             }
         },
-        
-        logout() { 
-            if (confirm("确定要退出当前账号吗？")) { 
-                localStorage.removeItem('planpro_access_key'); 
-                localStorage.removeItem('planpro_user_id'); 
-                this.accessKey = null; 
+
+        logout() {
+            if (confirm("确定要退出当前账号吗？")) {
+                localStorage.removeItem('planpro_access_key');
+                localStorage.removeItem('planpro_user_id');
+                this.accessKey = null;
                 this.userId = null;
-                this.inputKey = ''; 
+                this.inputKey = '';
                 this.inputPassword = '';
-                this.tasks = []; 
-                this.templates = []; 
-                this.scheduledTasks = []; 
+                this.tasks = [];
+                this.templates = [];
+                this.scheduledTasks = [];
                 this.groups = [];
-            } 
+            }
         },
 
         async deleteAccount() {
             const pwd = prompt("⚠️ 危险操作：注销账号将清空您的所有云端数据！\n请输入您的密码以确认注销：");
-            if (pwd === null) return; 
+            if (pwd === null) return;
             if (!pwd.trim()) return alert("密码不能为空");
 
             this.isSyncing = 'syncing';
@@ -325,7 +398,7 @@ createApp({
                     p_access_key: this.accessKey,
                     p_password: pwd
                 });
-                
+
                 if (error) throw error;
                 if (!data) {
                     this.isSyncing = 'idle';
@@ -333,7 +406,7 @@ createApp({
                 }
 
                 if (confirm("密码验证成功。最后一次确认：是否永久删除该账号下的所有数据？（此操作不可逆）")) {
-                    
+
                     const tablesToClear = ['tasks', 'templates', 'scheduled_tasks', 'groups'];
                     for (const tableName of tablesToClear) {
                         try {
@@ -342,9 +415,9 @@ createApp({
                             console.warn(`清理 ${tableName} 表时出现警告:`, err);
                         }
                     }
-                    
-                    try { 
-                        await supabaseClient.from('users').delete().eq('id', this.userId); 
+
+                    try {
+                        await supabaseClient.from('users').delete().eq('id', this.userId);
                     } catch (e) {
                         console.warn("清理 user 表失败:", e);
                     }
@@ -410,9 +483,9 @@ createApp({
                 this.isSyncing = 'done';
                 setTimeout(() => { if (this.isSyncing === 'done') this.isSyncing = 'idle'; }, 2000);
                 this.checkScheduledTasks();
-            } catch (e) { 
-                console.error(e); 
-                this.isSyncing = 'error'; 
+            } catch (e) {
+                console.error(e);
+                this.isSyncing = 'error';
             }
         },
 
@@ -420,9 +493,9 @@ createApp({
             if (!this.userId) return;
 
             const currentHash = this.generateDataHash();
-            if (this.lastDataHash === currentHash) return; 
+            if (this.lastDataHash === currentHash) return;
             this.lastDataHash = currentHash;
-            
+
             this.isSyncing = 'syncing';
             if (this.saveTimer) clearTimeout(this.saveTimer);
 
@@ -478,26 +551,26 @@ createApp({
                     if (dbTasks.length > 0) promises.push(supabaseClient.from('tasks').upsert(dbTasks));
                     if (dbTemplates.length > 0) promises.push(supabaseClient.from('templates').upsert(dbTemplates));
                     if (dbScheduled.length > 0) promises.push(supabaseClient.from('scheduled_tasks').upsert(dbScheduled));
-                    
+
                     if (dbGroups.length > 0) {
                         try {
                             promises.push(supabaseClient.from('groups').upsert(dbGroups));
-                        } catch(e) {}
+                        } catch (e) { }
                     }
 
                     await Promise.all(promises);
 
                     this.isSyncing = 'done';
                     setTimeout(() => { if (this.isSyncing === 'done') this.isSyncing = 'idle'; }, 3000);
-                } catch (error) { 
+                } catch (error) {
                     console.error("保存失败:", error);
-                    this.isSyncing = 'error'; 
+                    this.isSyncing = 'error';
                 }
-            }, 1500); 
+            }, 1500);
         },
 
-        async deleteTask(id) { 
-            if (confirm('确定删除？')) { 
+        async deleteTask(id) {
+            if (confirm('确定删除？')) {
                 try {
                     if (this.currentView === 'dashboard') {
                         this.tasks = this.tasks.filter(t => t.id !== id);
@@ -509,9 +582,9 @@ createApp({
                         this.scheduledTasks = this.scheduledTasks.filter(t => t.id !== id);
                         await supabaseClient.from('scheduled_tasks').delete().eq('id', id);
                     }
-                    if (this.activeTask?.id === id) this.activeTask = null; 
-                } catch(e) { console.error("删除失败:", e) }
-            } 
+                    if (this.activeTask?.id === id) this.activeTask = null;
+                } catch (e) { console.error("删除失败:", e) }
+            }
         },
 
         onScheduleToggle(sch) {
@@ -523,12 +596,12 @@ createApp({
         },
 
         checkScheduledTasks() {
-            const todayDate = new Date(this.today); 
+            const todayDate = new Date(this.today);
             let addedCount = 0;
-            
+
             this.scheduledTasks.forEach(sch => {
                 if (!sch.enabled) return;
-                
+
                 if (!sch.lastGeneratedDate) {
                     const yesterday = new Date(todayDate);
                     yesterday.setDate(yesterday.getDate() - 1);
@@ -543,17 +616,17 @@ createApp({
                     if (sch.repeatDays.includes(dayOfWeek)) {
                         const taskTime = checkDate.toISOString().split('T')[0] + 'T09:00';
                         const newNote = `${taskTime} ${sch.note || ''}`.trim();
-                        
-                        this.tasks.push({ 
-                            id: Date.now() + Math.random().toString(36).substr(2, 5), 
-                            title: sch.title, 
-                            status: 'todo', 
-                            priority: sch.priority, 
-                            date: taskTime, 
-                            deadline: '', 
-                            note: newNote, 
-                            subtasks: JSON.parse(JSON.stringify(sch.subtasks || [])), 
-                            expanded: false, 
+
+                        this.tasks.push({
+                            id: Date.now() + Math.random().toString(36).substr(2, 5),
+                            title: sch.title,
+                            status: 'todo',
+                            priority: sch.priority,
+                            date: taskTime,
+                            deadline: '',
+                            note: newNote,
+                            subtasks: JSON.parse(JSON.stringify(sch.subtasks || [])),
+                            expanded: false,
                             isFromSchedule: true,
                             groupId: sch.groupId || ''
                         });
@@ -582,11 +655,11 @@ createApp({
         },
 
         exportData() { const blob = new Blob([JSON.stringify({ tasks: this.tasks, templates: this.templates, scheduledTasks: this.scheduledTasks, groups: this.groups }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${this.today}.json`; a.click(); },
-        
+
         importData(event) {
             const file = event.target.files[0]; if (!file) return;
             const reader = new FileReader(); reader.onload = (e) => {
-                try { const json = JSON.parse(e.target.result); if (json.tasks) this.tasks = json.tasks; if (json.templates) this.templates = json.templates; if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks; if(json.groups) this.groups = json.groups; alert("导入成功！(稍后会自动同步至云端)"); } catch { alert('无效文件'); }
+                try { const json = JSON.parse(e.target.result); if (json.tasks) this.tasks = json.tasks; if (json.templates) this.templates = json.templates; if (json.scheduledTasks) this.scheduledTasks = json.scheduledTasks; if (json.groups) this.groups = json.groups; alert("导入成功！(稍后会自动同步至云端)"); } catch { alert('无效文件'); }
                 event.target.value = '';
             }; reader.readAsText(file);
         },
@@ -638,10 +711,10 @@ createApp({
 
         dragStart(i, e) { this.draggingIndex = i; },
         dragDrop(to) { const arr = this.modal.data.subtasks; const item = arr.splice(this.draggingIndex, 1)[0]; arr.splice(to, 0, item); },
-        
-        toggleSubtask(task, sub) { 
-            sub.status = sub.status === 'done' ? 'todo' : 'done'; 
-            
+
+        toggleSubtask(task, sub) {
+            sub.status = sub.status === 'done' ? 'todo' : 'done';
+
             if (sub.status === 'done') {
                 if (task.subtasks.every(s => s.status === 'done')) {
                     task.status = 'done';
@@ -658,28 +731,28 @@ createApp({
             }
         },
 
-        updateStatus(task) { 
-            const nowIso = new Date(this.now.getTime() - (this.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16); 
-            
-            if (task.status === 'doing') { 
-                if (!task.startTime) task.startTime = nowIso; 
-                if (!task.date) task.date = nowIso; 
-                task.completedDate = null; 
-            } else if (task.status === 'done') { 
-                if (!task.startTime) task.startTime = nowIso; 
-                if (!task.date) task.date = nowIso;           
-                task.completedDate = nowIso; 
-                if (task.subtasks) task.subtasks.forEach(s => s.status = 'done'); 
-            } else { 
-                task.startTime = null; 
-                task.completedDate = null; 
-            } 
+        updateStatus(task) {
+            const nowIso = new Date(this.now.getTime() - (this.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+
+            if (task.status === 'doing') {
+                if (!task.startTime) task.startTime = nowIso;
+                if (!task.date) task.date = nowIso;
+                task.completedDate = null;
+            } else if (task.status === 'done') {
+                if (!task.startTime) task.startTime = nowIso;
+                if (!task.date) task.date = nowIso;
+                task.completedDate = nowIso;
+                if (task.subtasks) task.subtasks.forEach(s => s.status = 'done');
+            } else {
+                task.startTime = null;
+                task.completedDate = null;
+            }
         },
 
         changeDate(off) { const d = new Date(this.viewDate); d.setDate(d.getDate() + off); this.viewDate = d.toISOString().split('T')[0]; this.activeTask = null; },
         resetToToday() { this.viewDate = this.today; this.checkScheduledTasks(); },
         switchView(view) { this.currentView = view; this.activeTask = null; if (view === 'dashboard') { this.viewDate = this.today; this.checkScheduledTasks(); } },
-        
+
         toggleAiPanel() {
             this.showAiPanel = !this.showAiPanel;
             if (this.showAiPanel) {
@@ -687,40 +760,40 @@ createApp({
             }
         },
 
-        selectTask(task) { 
+        selectTask(task) {
             this.showAiPanel = false;
-            this.activeTask = task; 
+            this.activeTask = task;
         },
         toggleAll() { this.isAllExpanded = !this.isAllExpanded; this.activeTasks.forEach(t => t.expanded = this.isAllExpanded); },
-        
-        loadTemplate(e) { 
-            const t = this.templates.find(x => x.id === e.target.value); 
-            if (t) { 
-                this.modal.data.title = t.title; 
-                this.modal.data.priority = t.priority; 
-                this.modal.data.subtasks = JSON.parse(JSON.stringify(t.subtasks)); 
-            } 
-            e.target.value = ''; 
+
+        loadTemplate(e) {
+            const t = this.templates.find(x => x.id === e.target.value);
+            if (t) {
+                this.modal.data.title = t.title;
+                this.modal.data.priority = t.priority;
+                this.modal.data.subtasks = JSON.parse(JSON.stringify(t.subtasks));
+            }
+            e.target.value = '';
         },
-        
-        openModal(task) { 
-            this.modal.show = true; 
-            this.modal.isEdit = !!task; 
-            
+
+        openModal(task) {
+            this.modal.show = true;
+            this.modal.isEdit = !!task;
+
             const defaultGroupId = this.activeGroupId === 'all' ? '' : this.activeGroupId;
-            
-            this.modal.data = task ? JSON.parse(JSON.stringify(task)) : { 
-                id: Date.now().toString(), 
-                title: '', 
-                status: 'todo', 
-                priority: 'normal', 
-                date: this.currentView === 'dashboard' ? this.viewDate + 'T12:00' : this.today + 'T09:00', 
-                subtasks: [], 
+
+            this.modal.data = task ? JSON.parse(JSON.stringify(task)) : {
+                id: Date.now().toString(),
+                title: '',
+                status: 'todo',
+                priority: 'normal',
+                date: this.currentView === 'dashboard' ? this.viewDate + 'T12:00' : this.today + 'T09:00',
+                subtasks: [],
                 repeatDays: [],
-                groupId: defaultGroupId 
-            }; 
+                groupId: defaultGroupId
+            };
         },
-        
+
         addModalSubtask() { const v = this.$refs.newSubInput.value.trim(); if (v) { if (!this.modal.data.subtasks) this.modal.data.subtasks = []; this.modal.data.subtasks.push({ title: v, status: 'todo' }); this.$refs.newSubInput.value = ''; } },
         saveTask() { if (!this.modal.data.title) return; const d = this.modal.data; const arr = this.currentView === 'dashboard' ? this.tasks : (this.currentView === 'templates' ? this.templates : this.scheduledTasks); if (this.modal.isEdit) { const i = arr.findIndex(t => t.id === d.id); d.expanded = arr[i].expanded; arr[i] = d; if (this.activeTask?.id === d.id) this.activeTask = d; } else arr.push(d); this.modal.show = false; },
         addInlineSubtask(t, e) { if (e.target.value.trim()) { t.subtasks.push({ title: e.target.value, status: 'todo' }); e.target.value = ''; } },
@@ -768,10 +841,10 @@ createApp({
         confirmAiTask(taskData, msgIndex) {
             this.tasks.push(taskData);
             this.chatHistory[msgIndex].confirmed = true;
-            this.chatHistory.push({ 
-                role: 'assistant', 
-                type: 'text', 
-                content: `✅ 任务 "${taskData.title}" 已成功添加到列表！\n(注: 若未在看板显示，请检查任务日期或左上方分组是否匹配)` 
+            this.chatHistory.push({
+                role: 'assistant',
+                type: 'text',
+                content: `✅ 任务 "${taskData.title}" 已成功添加到列表！\n(注: 若未在看板显示，请检查任务日期或左上方分组是否匹配)`
             });
             this.$nextTick(() => this.scrollToBottom());
         },
@@ -779,14 +852,14 @@ createApp({
         async analyzeAiIntent(userText) {
             const now = new Date();
             const nowIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-            
+
             const systemInstructions = `你是一个任务管理助手。当前时间：${nowIso}。请严格遵守以下规则：根据用户的输入生成一个 JSON 对象。你必须且只能返回合法的纯 JSON 字符串，绝不能包含任何 markdown 代码块标记。格式必须严格为：{"title":"任务名", "date":"YYYY-MM-DDTHH:mm", "priority":"normal/urgent", "note":""}。重要警告：日期中的 T 是强制要求的，绝不能用空格或斜杠！`;
 
             const fullMessage = `${systemInstructions}\n\n用户输入: ${userText}`;
 
-            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz'; 
+            const VERCEL_HOST = 'https://www.yuyuworkplan-pro.xyz';
             let aiRawContent = "";
-            
+
             try {
                 const response = await fetch(`${VERCEL_HOST}/api/chat`, {
                     method: 'POST',
@@ -797,8 +870,8 @@ createApp({
                 if (!response.ok) throw new Error(`API 响应错误: ${response.status}`);
 
                 const data = await response.json();
-                aiRawContent = data.choices?.[0]?.message?.content || data.reply || data.response || ""; 
-                
+                aiRawContent = data.choices?.[0]?.message?.content || data.reply || data.response || "";
+
                 if (!aiRawContent) {
                     console.error("未获取到 AI 回复，API完整返回:", data);
                     throw new Error("API返回为空");
@@ -814,9 +887,9 @@ createApp({
                 } catch (parseErr) {
                     console.warn("初次 JSON 解析失败，尝试自动修复格式...", parseErr);
                     const fixedStr = cleanJsonStr
-                        .replace(/“|”/g, '"') 
-                        .replace(/'/g, '"') 
-                        .replace(/,\s*([\}\]])/g, '$1'); 
+                        .replace(/“|”/g, '"')
+                        .replace(/'/g, '"')
+                        .replace(/,\s*([\}\]])/g, '$1');
                     parsed = JSON.parse(fixedStr);
                 }
 
@@ -825,12 +898,12 @@ createApp({
                 }
 
                 let aiDate = parsed.date || this.today + "T09:00";
-                aiDate = aiDate.replace(' ', 'T').replace(/\//g, '-'); 
-                if (aiDate.length === 10) aiDate += "T09:00"; 
-                if (aiDate.length > 16) aiDate = aiDate.substring(0, 16); 
+                aiDate = aiDate.replace(' ', 'T').replace(/\//g, '-');
+                if (aiDate.length === 10) aiDate += "T09:00";
+                if (aiDate.length > 16) aiDate = aiDate.substring(0, 16);
 
                 return {
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5), 
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
                     title: parsed.title || "未命名任务",
                     date: aiDate,
                     status: 'todo',
