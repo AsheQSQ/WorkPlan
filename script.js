@@ -9,7 +9,6 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            // V4 身份与鉴权
             isRegisterMode: false,
             accessKey: null,
             userId: null,
@@ -20,22 +19,19 @@ createApp({
             saveTimer: null,
             lastDataHash: '',
 
-            // 深色模式状态
             isDarkMode: false,
 
-            // AI 相关
             aiInput: '',
             chatHistory: [],
             showAiPanel: false,
 
-            // 业务数据
             today: new Date().toISOString().split('T')[0],
             viewDate: new Date().toISOString().split('T')[0],
             now: new Date(),
             currentView: 'dashboard',
 
-            groups: [], // 新增分组数据
-            activeGroupId: 'all', // 当前选中的分组页
+            groups: [],
+            activeGroupId: 'all',
 
             tasks: [],
             templates: [],
@@ -44,18 +40,17 @@ createApp({
             modal: { show: false, isEdit: false, data: {} },
             isAllExpanded: false,
 
+            // 🌟 独立悬浮富文本窗口的状态 🌟
             mdModal: {
                 show: false,
-                mode: 'view', // 'edit' 或者是 'view'
-                data: { id: '', type: 'markdown', title: '', content: '' },
+                data: { id: '', type: 'richtext', title: '', content: '' },
                 targetTask: null
             },
 
-            // 统计相关数据
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
             statsStatus: 'all',
-            statsGroupId: 'all', // 统计页的分组筛选
+            statsGroupId: 'all',
             statsRangeType: 'week',
             draggingIndex: null
         }
@@ -80,19 +75,12 @@ createApp({
             }
             return list.map(s => ({ ...s, id: 'preview_' + s.id, status: 'todo', isPreview: true }));
         },
-        // 渲染 Markdown 的计算属性
-        renderedMarkdown() {
-            if (!this.mdModal.data.content) return '<p class="text-slate-400 italic">空文档...</p>';
-            // 调用 marked 库解析 markdown 文本为 html
-            return marked.parse(this.mdModal.data.content);
-        },
         activeTasks() {
             const list = this.tasks.filter(t => {
                 const taskDate = t.date.split('T')[0];
                 if (t.status === 'done') return false;
 
                 if (this.viewDate === this.today) {
-                    // 今日看板放行所有未来的任务
                 } else {
                     if (taskDate !== this.viewDate) return false;
                 }
@@ -175,7 +163,6 @@ createApp({
         groups: { handler() { if (this.userId) this.saveData(); }, deep: true }
     },
     mounted() {
-        // 主题初始化
         const savedTheme = localStorage.getItem('planpro_theme');
         if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             this.isDarkMode = true;
@@ -213,7 +200,6 @@ createApp({
             }
         }, 60000);
 
-        // 移动端/全局返回键拦截（History Trap）
         window.history.pushState('trap', null, '');
         window.addEventListener('popstate', this.handlePopState);
     },
@@ -221,52 +207,91 @@ createApp({
         toggleTheme() {
             this.isDarkMode = !this.isDarkMode;
         },
-        // ====== 新增的 Markdown 附件交互逻辑 ======
+
+        // =========================================================
+        // 🌟 富文本与附件交互逻辑 (核心重构区) 🌟
+        // =========================================================
 
         openMdEditor(task, doc = null) {
             if (!task.attachments) {
                 task.attachments = [];
             }
             this.mdModal.targetTask = task;
-
+            
             if (doc) {
-                // 打开现有的文档：克隆一份数据用于展示
                 this.mdModal.data = JSON.parse(JSON.stringify(doc));
-                this.mdModal.mode = 'view';
             } else {
-                // 新建文档
                 this.mdModal.data = {
                     id: 'doc_' + Date.now(),
-                    type: 'markdown',
+                    type: 'richtext',
                     title: '',
                     content: '',
                     created_at: new Date().toISOString()
                 };
-                this.mdModal.mode = 'edit';
             }
+            
             this.mdModal.show = true;
+
+            // 等待浮窗的 DOM 渲染完毕后，挂载 Quill
+            this.$nextTick(() => {
+                const editorDiv = document.querySelector('#quill-editor');
+                if (editorDiv) {
+                    editorDiv.innerHTML = ''; // 清空可能残留的 HTML
+                }
+                
+                const toolbarOptions = [
+                    [{ 'size': ['small', false, 'large', 'huge'] }], 
+                    [{ 'header': [1, 2, 3, false] }],               
+                    ['bold', 'italic', 'underline', 'strike'],      
+                    [{ 'color': [] }, { 'background': [] }],        
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],   
+                    ['clean']                                       
+                ];
+
+                window.quillInstance = new Quill('#quill-editor', {
+                    theme: 'snow',
+                    modules: { toolbar: toolbarOptions },
+                    placeholder: '在这里像写 Word 一样记录详细内容...'
+                });
+
+                if (this.mdModal.data.content) {
+                    window.quillInstance.root.innerHTML = this.mdModal.data.content;
+                }
+            });
         },
 
-        saveMdDoc() {
+        async saveMdDoc() {
             const task = this.mdModal.targetTask;
             if (!task.attachments) task.attachments = [];
 
-            // 查找是否已经存在这个文档
-            const index = task.attachments.findIndex(a => a.id === this.mdModal.data.id);
+            // 从富文本获取带格式的 HTML 内容
+            this.mdModal.data.content = window.quillInstance.root.innerHTML;
 
+            const index = task.attachments.findIndex(a => a.id === this.mdModal.data.id);
             if (index > -1) {
-                // 更新旧文档
                 task.attachments[index] = JSON.parse(JSON.stringify(this.mdModal.data));
             } else {
-                // 插入新文档
                 task.attachments.push(JSON.parse(JSON.stringify(this.mdModal.data)));
             }
 
-            // 触发你的数据库同步保存操作 (借用你原有的 updateStatus 方法来触发保存)
-            this.updateStatus(task);
+            // 强制直接推送到云端保存
+            try {
+                const { error } = await supabaseClient
+                    .from('tasks')
+                    .update({ attachments: task.attachments })
+                    .eq('id', task.id);
+                    
+                if (error) {
+                    console.error("更新云端附件失败:", error);
+                    alert("保存失败：请确保在 Supabase 执行了添加 attachments 字段的 SQL！");
+                }
+            } catch (err) {
+                console.error("保存发生错误:", err);
+            }
 
-            // 保存后切回阅览模式
-            this.mdModal.mode = 'view';
+            // 刷新本地数据
+            this.updateStatus(task);
+            this.closeMdEditor();
         },
 
         closeMdEditor() {
@@ -274,18 +299,34 @@ createApp({
             this.mdModal.targetTask = null;
         },
 
-        deleteAttachment(task, docId) {
+        async deleteAttachment(task, docId) {
             if (confirm('确定要永久删除这份文档吗？')) {
                 task.attachments = task.attachments.filter(a => a.id !== docId);
-                // 触发保存
+                
+                // 强制直接推送到云端删除
+                try {
+                    await supabaseClient
+                        .from('tasks')
+                        .update({ attachments: task.attachments })
+                        .eq('id', task.id);
+                } catch(e) {
+                    console.error("删除云端附件失败:", e);
+                }
+                
                 this.updateStatus(task);
             }
         },
 
+        // =========================================================
+
         handlePopState(e) {
             let handled = false;
 
-            if (this.modal.show) {
+            if (this.mdModal.show) {
+                this.closeMdEditor();
+                handled = true;
+            }
+            else if (this.modal.show) {
                 this.modal.show = false;
                 handled = true;
             }
@@ -387,55 +428,6 @@ createApp({
             }
         },
 
-        async deleteAccount() {
-            const pwd = prompt("⚠️ 危险操作：注销账号将清空您的所有云端数据！\n请输入您的密码以确认注销：");
-            if (pwd === null) return;
-            if (!pwd.trim()) return alert("密码不能为空");
-
-            this.isSyncing = 'syncing';
-            try {
-                const { data, error } = await supabaseClient.rpc('verify_login', {
-                    p_access_key: this.accessKey,
-                    p_password: pwd
-                });
-
-                if (error) throw error;
-                if (!data) {
-                    this.isSyncing = 'idle';
-                    return alert("密码错误，注销失败！");
-                }
-
-                if (confirm("密码验证成功。最后一次确认：是否永久删除该账号下的所有数据？（此操作不可逆）")) {
-
-                    const tablesToClear = ['tasks', 'templates', 'scheduled_tasks', 'groups'];
-                    for (const tableName of tablesToClear) {
-                        try {
-                            await supabaseClient.from(tableName).delete().eq('user_id', this.userId);
-                        } catch (err) {
-                            console.warn(`清理 ${tableName} 表时出现警告:`, err);
-                        }
-                    }
-
-                    try {
-                        await supabaseClient.from('users').delete().eq('id', this.userId);
-                    } catch (e) {
-                        console.warn("清理 user 表失败:", e);
-                    }
-
-                    this.isSyncing = 'idle';
-                    alert("账号数据已成功清空并注销。");
-                    this.logout(true);
-                } else {
-                    this.isSyncing = 'idle';
-                }
-            } catch (e) {
-                console.error("注销异常:", e);
-                alert("注销时发生错误：" + (e.message || "未知网络错误"));
-                this.isSyncing = 'error';
-                setTimeout(() => { this.isSyncing = 'idle'; }, 3000);
-            }
-        },
-
         async loadData() {
             this.isSyncing = 'syncing';
             try {
@@ -463,6 +455,7 @@ createApp({
                     completedDate: t.completed_date ? t.completed_date.substring(0, 16) : null,
                     isFromSchedule: t.is_from_schedule,
                     groupId: t.group_id || '',
+                    attachments: t.attachments || [], // 确保 attachments 被加载
                     expanded: false
                 }));
 
@@ -513,6 +506,7 @@ createApp({
                         completed_date: t.completedDate || null,
                         note: t.note || '',
                         subtasks: t.subtasks || [],
+                        attachments: t.attachments || [], // 确保 attachments 也进入常规同步队列
                         is_from_schedule: t.isFromSchedule || false,
                         group_id: t.groupId || null,
                         updated_at: new Date().toISOString()
@@ -626,6 +620,7 @@ createApp({
                             deadline: '',
                             note: newNote,
                             subtasks: JSON.parse(JSON.stringify(sch.subtasks || [])),
+                            attachments: [],
                             expanded: false,
                             isFromSchedule: true,
                             groupId: sch.groupId || ''
@@ -746,6 +741,12 @@ createApp({
             } else {
                 task.startTime = null;
                 task.completedDate = null;
+            }
+            
+            // 确保同步
+            const index = this.tasks.findIndex(t => t.id === task.id);
+            if(index !== -1) {
+                this.tasks.splice(index, 1, task);
             }
         },
 
@@ -915,11 +916,11 @@ createApp({
                     deadline: '',
                     startTime: null,
                     completedDate: null,
+                    attachments: [],
                     isFromSchedule: false
                 };
             } catch (error) {
                 console.error("===== AI 解析彻底失败 =====");
-                console.error("AI 原始返回字符串:", aiRawContent);
                 console.error("最终报错信息:", error);
                 throw new Error("AI 数据格式化失败，请重试或换个说法。");
             }
