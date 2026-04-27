@@ -1,6 +1,6 @@
 // --- Supabase 配置 ---
-const SUPABASE_URL = 'https://scjswpjktydojedqywxq.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_TSXrb7sbhV7l5hgqjC0KuA_dVdxmSpu';
+const SUPABASE_URL = 'https://scjswpjktydojedqywxq.supabase.co'; // 你的真实 URL
+const SUPABASE_KEY = 'sb_publishable_TSXrb7sbhV7l5hgqjC0KuA_dVdxmSpu'; // 你的真实 KEY
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -40,12 +40,8 @@ createApp({
             modal: { show: false, isEdit: false, data: {} },
             isAllExpanded: false,
 
-            // 🌟 独立悬浮富文本窗口的状态 🌟
-            mdModal: {
-                show: false,
-                data: { id: '', type: 'richtext', title: '', content: '' },
-                targetTask: null
-            },
+            // 🌟 核心：管理打开的多个富文本窗口
+            openEditors: [],
 
             statsStart: new Date().toISOString().split('T')[0],
             statsEnd: new Date().toISOString().split('T')[0],
@@ -178,6 +174,13 @@ createApp({
         }
         this.setStatsRange('week');
 
+        // 请求浏览器持久化存储权限 (防止 indexedDB 丢失)
+        if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().then(isPersisted => {
+                console.log(`持久化存储状态: ${isPersisted ? '已开启' : '未开启'}`);
+            });
+        }
+
         setInterval(() => {
             this.now = new Date();
             const nowIso = new Date(this.now.getTime() - (this.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
@@ -209,111 +212,187 @@ createApp({
         },
 
         // =========================================================
-        // 🌟 富文本与附件交互逻辑 (核心重构区) 🌟
+        // 🌟 统一附件管理与多窗口富文本 (本地文件 + 云端富文本) 🌟
         // =========================================================
 
-        openMdEditor(task, doc = null) {
-            if (!task.attachments) {
-                task.attachments = [];
+        // 统一处理文件点击：区分本地文件和富文本
+        async openAttachment(task, doc = null) {
+            if (!doc) {
+                this.openMdEditor(task, null); // 新建富文本
+                return;
             }
-            this.mdModal.targetTask = task;
-            
-            if (doc) {
-                this.mdModal.data = JSON.parse(JSON.stringify(doc));
-            } else {
-                this.mdModal.data = {
-                    id: 'doc_' + Date.now(),
-                    type: 'richtext',
-                    title: '',
-                    content: '',
-                    created_at: new Date().toISOString()
-                };
-            }
-            
-            this.mdModal.show = true;
 
-            // 等待浮窗的 DOM 渲染完毕后，挂载 Quill
-            this.$nextTick(() => {
-                const editorDiv = document.querySelector('#quill-editor');
-                if (editorDiv) {
-                    editorDiv.innerHTML = ''; // 清空可能残留的 HTML
+            if (doc.type === 'richtext') {
+                this.openMdEditor(task, doc); // 打开已有富文本
+            } else if (doc.type === 'local_file') {
+                // 读取本地 IndexedDB 里的二进制文件
+                try {
+                    const fileBlob = await localforage.getItem(doc.id);
+                    if (!fileBlob) {
+                        alert(`🔒 本地文件访问受限\n\n【${doc.title}】是保存在其他设备上的纯本地文件。出于隐私安全，它未被上传到云端，因此当前设备无法查看。`);
+                        return;
+                    }
+                    // 动态生成下载链接，调用系统默认应用打开
+                    const url = URL.createObjectURL(fileBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = doc.title;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error("读取本地文件失败:", error);
+                    alert("文件读取失败");
                 }
-                
-                const toolbarOptions = [
-                    [{ 'size': ['small', false, 'large', 'huge'] }], 
-                    [{ 'header': [1, 2, 3, false] }],               
-                    ['bold', 'italic', 'underline', 'strike'],      
-                    [{ 'color': [] }, { 'background': [] }],        
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],   
-                    ['clean']                                       
-                ];
+            }
+        },
 
-                window.quillInstance = new Quill('#quill-editor', {
+        // 处理本地大文件上传 (存入 IndexedDB)
+        async handleLocalFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 限制文件大小防止撑爆浏览器缓存 (设为 50MB)
+            if (file.size > 50 * 1024 * 1024) {
+                alert("文件过大！建议本地缓存的单文件不要超过 50MB。");
+                event.target.value = '';
+                return;
+            }
+
+            const docId = 'local_' + Date.now() + Math.random().toString(36).substr(2, 4);
+            const attachmentMeta = {
+                id: docId,
+                type: 'local_file',
+                title: file.name,
+                size: file.size,
+                created_at: new Date().toISOString()
+            };
+
+            try {
+                // 1. 真实物理文件存入本地
+                await localforage.setItem(docId, file);
+
+                // 2. 元数据加入 Vue 状态
+                if (!this.activeTask.attachments) this.activeTask.attachments = [];
+                this.activeTask.attachments.push(attachmentMeta);
+
+                // 3. 元数据强制同步到云端
+                await supabaseClient
+                    .from('tasks')
+                    .update({ attachments: this.activeTask.attachments })
+                    .eq('id', this.activeTask.id);
+                
+                this.updateStatus(this.activeTask);
+            } catch (error) {
+                console.error("本地文件保存失败:", error);
+                alert("文件保存失败！");
+            }
+            event.target.value = '';
+        },
+
+        // 🌟 支持多开的富文本编辑器窗口
+        openMdEditor(task, doc = null) {
+            if (!task.attachments) task.attachments = [];
+            
+            let newData;
+            if (doc) {
+                newData = JSON.parse(JSON.stringify(doc));
+            } else {
+                newData = { id: 'doc_' + Date.now(), type: 'richtext', title: '', content: '', created_at: new Date().toISOString() };
+            }
+
+            // 防止同一个文档被重复打开
+            if (this.openEditors.find(e => e.data.id === newData.id)) return;
+
+            // 推入多窗口数组
+            this.openEditors.push({
+                data: newData,
+                targetTask: task,
+                quillInstance: null
+            });
+
+            const index = this.openEditors.length - 1;
+
+            // 等待弹窗 DOM 渲染后挂载 Quill
+            this.$nextTick(() => {
+                const containerId = '#quill-editor-' + newData.id;
+                const quill = new Quill(containerId, {
                     theme: 'snow',
-                    modules: { toolbar: toolbarOptions },
-                    placeholder: '在这里像写 Word 一样记录详细内容...'
+                    modules: { 
+                        toolbar: [
+                            [{ 'size': ['small', false, 'large'] }], 
+                            [{ 'color': [] }, { 'background': [] }],
+                            ['bold', 'italic', 'strike', 'underline'],      
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],   
+                            ['clean']                                       
+                        ] 
+                    },
+                    placeholder: '记录内容...'
                 });
 
-                if (this.mdModal.data.content) {
-                    window.quillInstance.root.innerHTML = this.mdModal.data.content;
+                if (newData.content) {
+                    quill.root.innerHTML = newData.content;
                 }
+                
+                this.openEditors[index].quillInstance = quill;
             });
         },
 
-        async saveMdDoc() {
-            const task = this.mdModal.targetTask;
+        async saveMdDoc(index) {
+            const editor = this.openEditors[index];
+            const task = editor.targetTask;
             if (!task.attachments) task.attachments = [];
 
-            // 从富文本获取带格式的 HTML 内容
-            this.mdModal.data.content = window.quillInstance.root.innerHTML;
+            // 获取带格式的 HTML 内容
+            editor.data.content = editor.quillInstance.root.innerHTML;
 
-            const index = task.attachments.findIndex(a => a.id === this.mdModal.data.id);
-            if (index > -1) {
-                task.attachments[index] = JSON.parse(JSON.stringify(this.mdModal.data));
+            const aIndex = task.attachments.findIndex(a => a.id === editor.data.id);
+            if (aIndex > -1) {
+                task.attachments[aIndex] = JSON.parse(JSON.stringify(editor.data));
             } else {
-                task.attachments.push(JSON.parse(JSON.stringify(this.mdModal.data)));
+                task.attachments.push(JSON.parse(JSON.stringify(editor.data)));
             }
 
-            // 强制直接推送到云端保存
             try {
                 const { error } = await supabaseClient
                     .from('tasks')
                     .update({ attachments: task.attachments })
                     .eq('id', task.id);
-                    
-                if (error) {
-                    console.error("更新云端附件失败:", error);
-                    alert("保存失败：请确保在 Supabase 执行了添加 attachments 字段的 SQL！");
+                if(error) {
+                    console.error("云端保存失败:", error);
+                    alert("文档保存到云端失败！");
                 }
             } catch (err) {
-                console.error("保存发生错误:", err);
+                console.error(err);
             }
 
-            // 刷新本地数据
             this.updateStatus(task);
-            this.closeMdEditor();
+            this.closeMdEditor(index);
         },
 
-        closeMdEditor() {
-            this.mdModal.show = false;
-            this.mdModal.targetTask = null;
+        closeMdEditor(index) {
+            this.openEditors.splice(index, 1);
         },
 
-        async deleteAttachment(task, docId) {
-            if (confirm('确定要永久删除这份文档吗？')) {
+        async deleteAttachment(task, docId, docType) {
+            if (confirm('确定要永久移除此文件吗？(不可恢复)')) {
                 task.attachments = task.attachments.filter(a => a.id !== docId);
                 
-                // 强制直接推送到云端删除
                 try {
-                    await supabaseClient
-                        .from('tasks')
-                        .update({ attachments: task.attachments })
-                        .eq('id', task.id);
+                    // 如果是本地大文件，清空本地缓存以释放磁盘空间
+                    if (docType === 'local_file') {
+                        await localforage.removeItem(docId);
+                    }
+                    // 云端同步移除元数据
+                    await supabaseClient.from('tasks').update({ attachments: task.attachments }).eq('id', task.id);
                 } catch(e) {
-                    console.error("删除云端附件失败:", e);
+                    console.error("删除失败:", e);
                 }
-                
-                this.updateStatus(task);
+
+                // 强制刷新 Vue 视图
+                const taskIndex = this.tasks.findIndex(t => t.id === task.id);
+                if (taskIndex > -1) this.tasks.splice(taskIndex, 1, task);
             }
         },
 
@@ -322,8 +401,8 @@ createApp({
         handlePopState(e) {
             let handled = false;
 
-            if (this.mdModal.show) {
-                this.closeMdEditor();
+            if (this.openEditors.length > 0) {
+                this.openEditors.pop(); // 按返回键关闭最上层的编辑器
                 handled = true;
             }
             else if (this.modal.show) {
@@ -506,7 +585,7 @@ createApp({
                         completed_date: t.completedDate || null,
                         note: t.note || '',
                         subtasks: t.subtasks || [],
-                        attachments: t.attachments || [], // 确保 attachments 也进入常规同步队列
+                        attachments: t.attachments || [], // 同步 attachments
                         is_from_schedule: t.isFromSchedule || false,
                         group_id: t.groupId || null,
                         updated_at: new Date().toISOString()
@@ -693,11 +772,11 @@ createApp({
                     if (importCount > 0) {
                         alert(`🎉 成功导入了 ${importCount} 条历史数据！系统将自动保存至云端。`);
                     } else {
-                        alert('✅ 文件解析成功，但没有发现新数据（该备份内的数据可能已被导入过）。');
+                        alert('✅ 文件解析成功，但没有发现新数据。');
                     }
                 } catch (err) {
                     console.error(err);
-                    alert('文件解析失败，请确保您选择的是之前导出的 JSON 备份文件。');
+                    alert('文件解析失败，请确保选择的是导出的 JSON 备份文件。');
                 }
                 event.target.value = '';
             };
@@ -743,7 +822,6 @@ createApp({
                 task.completedDate = null;
             }
             
-            // 确保同步
             const index = this.tasks.findIndex(t => t.id === task.id);
             if(index !== -1) {
                 this.tasks.splice(index, 1, task);
@@ -921,7 +999,6 @@ createApp({
                 };
             } catch (error) {
                 console.error("===== AI 解析彻底失败 =====");
-                console.error("最终报错信息:", error);
                 throw new Error("AI 数据格式化失败，请重试或换个说法。");
             }
         },
