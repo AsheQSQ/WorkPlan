@@ -8,7 +8,9 @@ export const store = reactive({
     today: new Date().toISOString().split('T')[0], viewDate: new Date().toISOString().split('T')[0], now: new Date(), currentView: 'dashboard',
     groups: [], activeGroupId: 'all', tasks: [], templates: [], scheduledTasks: [], activeTask: null, modal: { show: false, isEdit: false, data: {} }, isAllExpanded: false,
     openEditors: [], baseZIndex: 100, dragState: { isDragging: false, index: -1, startX: 0, startY: 0, initialX: 0, initialY: 0 },
-    localAccessMap: {}, statsStart: new Date().toISOString().split('T')[0], statsEnd: new Date().toISOString().split('T')[0], statsStatus: 'all', statsGroupId: 'all', statsRangeType: 'week', draggingIndex: null
+    localAccessMap: {}, statsStart: new Date().toISOString().split('T')[0], statsEnd: new Date().toISOString().split('T')[0], statsStatus: 'all', statsGroupId: 'all', statsRangeType: 'week', draggingIndex: null,
+    // 🌟 核心修改：将原来的单变量变成字典对象，按分组ID存储不同分组的配置
+    completedLookbacks: JSON.parse(localStorage.getItem('planpro_lookbacks') || '{}')
 });
 
 export const getters = {
@@ -46,14 +48,37 @@ export const getters = {
             return a.date > b.date ? 1 : -1;
         });
     }),
+    hasAnyCompletedInGroup: computed(() => {
+        return store.tasks.some(t => t.status === 'done' && (store.activeGroupId === 'all' || (t.groupId || '') === store.activeGroupId) && (t.completedDate ? t.completedDate.split('T')[0] : t.date.split('T')[0]) <= store.viewDate);
+    }),
     completedTasks: computed(() => {
         return store.tasks.filter(t => {
             if (t.status !== 'done') return false;
-            if (store.viewDate === store.today) {
-                if (t.date.split('T')[0] !== store.today && !(t.completedDate && t.completedDate.split('T')[0] === store.today)) return false;
-            } else { if (t.date.split('T')[0] !== store.viewDate) return false; }
             if (store.activeGroupId !== 'all' && (t.groupId || '') !== store.activeGroupId) return false;
-            return true;
+
+            const targetDate = t.completedDate ? t.completedDate.split('T')[0] : t.date.split('T')[0];
+            
+            // 🌟 核心修改：动态获取当前分组的设置，如果没设置则默认为 'today'
+            const currentLookback = store.completedLookbacks[store.activeGroupId] || 'today';
+            
+            if (currentLookback === 'all') {
+                return targetDate <= store.viewDate;
+            }
+
+            let lookbackDays = 0;
+            if (currentLookback === '3days') lookbackDays = 3;
+            else if (currentLookback === 'week') lookbackDays = 7;
+            else if (currentLookback === 'month') lookbackDays = 30;
+
+            const viewD = new Date(store.viewDate);
+            viewD.setDate(viewD.getDate() - lookbackDays);
+            const startDateStr = viewD.toISOString().split('T')[0];
+
+            return targetDate >= startDateStr && targetDate <= store.viewDate;
+        }).sort((a, b) => {
+            const dateA = a.completedDate || a.date;
+            const dateB = b.completedDate || b.date;
+            return dateB.localeCompare(dateA);
         });
     }),
     overdueCount: computed(() => store.tasks.filter(t => t.status !== 'done' && actions.isOverdue(t)).length),
@@ -74,6 +99,11 @@ export const getters = {
 
 export const actions = {
     toggleTheme() { store.isDarkMode = !store.isDarkMode; },
+    // 🌟 核心修改：保存配置时，将值存入当前活跃分组 ID 对应的键下
+    setLookback(val) { 
+        store.completedLookbacks[store.activeGroupId] = val; 
+        localStorage.setItem('planpro_lookbacks', JSON.stringify(store.completedLookbacks)); 
+    },
     handlePopState(e) {
         let handled = false;
         if (store.openEditors.length > 0) { store.openEditors.pop(); handled = true; }
@@ -250,18 +280,6 @@ export const actions = {
     },
     exportData() { const blob = new Blob([JSON.stringify({ tasks: store.tasks, templates: store.templates, scheduledTasks: store.scheduledTasks, groups: store.groups }, null, 2)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${store.today}.json`; a.click(); },
     importData(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const json = JSON.parse(e.target.result); if (json.tasks) store.tasks = json.tasks; if (json.templates) store.templates = json.templates; if (json.scheduledTasks) store.scheduledTasks = json.scheduledTasks; if(json.groups) store.groups = json.groups; alert("导入成功！(稍后会自动同步至云端)"); } catch { alert('无效文件'); } event.target.value = ''; }; reader.readAsText(file); },
-    async importOldData(event) {
-        const file = event.target.files[0]; if (!file) return;
-        const reader = new FileReader(); reader.onload = async (e) => {
-            try {
-                const json = JSON.parse(e.target.result); let importCount = 0;
-                if (json.tasks && Array.isArray(json.tasks)) { const existingIds = new Set(store.tasks.map(t => t.id)); const newTasks = json.tasks.filter(t => !existingIds.has(t.id)); store.tasks = [...store.tasks, ...newTasks]; importCount += newTasks.length; }
-                if (json.templates && Array.isArray(json.templates)) { const existingIds = new Set(store.templates.map(t => t.id)); const newTmpls = json.templates.filter(t => !existingIds.has(t.id)); store.templates = [...store.templates, ...newTmpls]; importCount += newTmpls.length; }
-                if (json.scheduledTasks && Array.isArray(json.scheduledTasks)) { const existingIds = new Set(store.scheduledTasks.map(t => t.id)); const newSch = json.scheduledTasks.filter(t => !existingIds.has(t.id)); store.scheduledTasks = [...store.scheduledTasks, ...newSch]; importCount += newSch.length; }
-                if (importCount > 0) alert(`🎉 成功导入了 ${importCount} 条历史数据！系统将自动保存至云端。`); else alert('✅ 文件解析成功，但没有发现新数据。');
-            } catch (err) { alert('文件解析失败。'); } event.target.value = '';
-        }; reader.readAsText(file);
-    },
     dragStart(i, e) { store.draggingIndex = i; },
     dragDrop(to) { const arr = store.modal.data.subtasks; const item = arr.splice(store.draggingIndex, 1)[0]; arr.splice(to, 0, item); },
     toggleSubtask(task, sub) {

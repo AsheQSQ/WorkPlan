@@ -18,10 +18,8 @@ export default {
                     <button @click="toggleTheme" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:text-blue-600 font-bold transition-colors"><i :class="isDarkMode ? 'ph-bold ph-sun' : 'ph-bold ph-moon'"></i> {{ isDarkMode ? '切换为浅色模式' : '切换为深色模式' }}</button>
                     <button @click="exportData" class="flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:text-blue-600"><i class="ph ph-download-simple"></i> 备份</button>
                     <button @click="$refs.fileInput.click()" class="flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:text-blue-600"><i class="ph ph-upload-simple"></i> 恢复</button>
-                    <button @click="$refs.importOldInput.click()" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 rounded-lg text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 font-bold transition-colors"><i class="ph-bold ph-file-arrow-up"></i> 导入旧版 JSON 备份</button>
                     <button @click="logout" class="col-span-2 flex items-center justify-center gap-1 py-2 bg-white dark:bg-slate-700 border border-red-100 dark:border-red-900/50 rounded-lg text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 font-bold"><i class="ph-bold ph-sign-out"></i> 安全退出</button>
                     <input type="file" ref="fileInput" @change="importData" class="hidden" accept=".json">
-                    <input type="file" ref="importOldInput" @change="importOldData" class="hidden" accept=".json">
                 </div>
             </div>
         </aside>
