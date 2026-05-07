@@ -1,13 +1,22 @@
 // 每次你对项目做了重大更新，请把这里的 v1 改成 v2, v3, v4...
-const CACHE_NAME = 'planpro-cache-v2';
+const CACHE_NAME = 'planpro-cache-v3';
 
 // 需要缓存的文件
 const urlsToCache = [
   './',
   './index.html',
   './style.css',
-  './script.js',
-  './manifest.json'
+  './manifest.json',
+  './js/main.js',
+  './js/store.js',
+  './js/services.js',
+  './js/utils.js',
+  './js/components/Sidebar.js',
+  './js/components/AppMain.js',
+  './js/components/AiPanel.js',
+  './js/components/AuthModal.js',
+  './js/components/TaskModal.js',
+  './js/components/MdEditors.js'
 ];
 
 // 1. 安装阶段：跳过等待，立即接管
