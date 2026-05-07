@@ -8,7 +8,7 @@ export const store = reactive({
     today: new Date().toISOString().split('T')[0], viewDate: new Date().toISOString().split('T')[0], now: new Date(), currentView: 'dashboard',
     groups: [], activeGroupId: 'all', tasks: [], templates: [], scheduledTasks: [], activeTask: null, modal: { show: false, isEdit: false, data: {} }, isAllExpanded: false,
     openEditors: [], baseZIndex: 100, dragState: { isDragging: false, index: -1, startX: 0, startY: 0, initialX: 0, initialY: 0 },
-    localAccessMap: {}, statsStart: new Date().toISOString().split('T')[0], statsEnd: new Date().toISOString().split('T')[0], statsStatus: 'all', statsGroupId: 'all', statsRangeType: 'week', draggingIndex: null,
+    localAccessMap: {}, fileSearchQuery: '', fileTypeFilter: 'all', fileGroupId: 'all', statsStart: new Date().toISOString().split('T')[0], statsEnd: new Date().toISOString().split('T')[0], statsStatus: 'all', statsGroupId: 'all', statsRangeType: 'week', draggingIndex: null,
     // 🌟 核心修改：将原来的单变量变成字典对象，按分组ID存储不同分组的配置
     completedLookbacks: JSON.parse(localStorage.getItem('planpro_lookbacks') || '{}')
 });
@@ -85,15 +85,39 @@ export const getters = {
     enabledScheduledCount: computed(() => store.scheduledTasks.filter(t => t.enabled).length),
     statsData: computed(() => {
         const start = store.statsStart; const end = store.statsEnd;
-        let list = store.tasks.filter(t => { const d = t.date.split('T')[0]; return d >= start && d <= end; });
+        const getStatDate = (task) => {
+            const source = task.status === 'done' ? (task.completedDate || task.date) : task.date;
+            return source ? source.split('T')[0] : '';
+        };
+        let list = store.tasks.filter(t => {
+            const d = getStatDate(t);
+            return d && d >= start && d <= end;
+        });
         if (store.statsStatus === 'incomplete') list = list.filter(t => t.status === 'todo' || t.status === 'doing');
         else if (store.statsStatus !== 'all') list = list.filter(t => t.status === store.statsStatus);
         if (store.statsGroupId !== 'all') list = list.filter(t => (t.groupId || '') === store.statsGroupId);
-        list.sort((a, b) => new Date(b.date) - new Date(a.date));
+        list.sort((a, b) => (getStatDate(b) + (b.completedDate || b.date || '')).localeCompare(getStatDate(a) + (a.completedDate || a.date || '')));
         const total = list.length; const done = list.filter(t => t.status === 'done').length;
         const doing = list.filter(t => t.status === 'doing').length; const todo = list.filter(t => t.status === 'todo').length;
         const rate = total > 0 ? ((done / total) * 100).toFixed(1) : 0;
         return { total, done, doing, todo, rate, list };
+    }),
+    fileSearchResults: computed(() => {
+        const keyword = store.fileSearchQuery.trim().toLowerCase();
+        return store.tasks.flatMap(task => (task.attachments || []).map(file => ({ file, task }))).filter(({ file, task }) => {
+            if (store.fileTypeFilter !== 'all' && file.type !== store.fileTypeFilter) return false;
+            if (store.fileGroupId !== 'all' && (task.groupId || '') !== store.fileGroupId) return false;
+            if (!keyword) return true;
+            const haystack = [file.title, file.content, task.title, task.note, actions.getGroupName(task.groupId)].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(keyword);
+        }).sort((a, b) => (b.file.created_at || '').localeCompare(a.file.created_at || ''));
+    }),
+    fileStats: computed(() => {
+        const items = store.tasks.flatMap(task => (task.attachments || []).map(file => ({ file, task })));
+        const local = items.filter(({ file }) => file.type === 'local_file').length;
+        const richtext = items.filter(({ file }) => file.type === 'richtext').length;
+        const totalSize = items.reduce((sum, { file }) => sum + (Number(file.size) || 0), 0);
+        return { total: items.length, local, richtext, totalSize };
     })
 };
 
@@ -292,7 +316,7 @@ export const actions = {
     },
     changeDate(off) { const d = new Date(store.viewDate); d.setDate(d.getDate() + off); store.viewDate = d.toISOString().split('T')[0]; store.activeTask = null; },
     resetToToday() { store.viewDate = store.today; actions.checkScheduledTasks(); },
-    switchView(view) { store.currentView = view; store.activeTask = null; if (view === 'dashboard') { store.viewDate = store.today; actions.checkScheduledTasks(); } },
+    switchView(view) { store.currentView = view; store.activeTask = null; store.showAiPanel = false; if (view === 'dashboard') { store.viewDate = store.today; actions.checkScheduledTasks(); } else if (view === 'files') { actions.checkLocalFilesAccessibility(); } },
     toggleAiPanel() { store.showAiPanel = !store.showAiPanel; if (store.showAiPanel) { store.activeTask = null; } },
     selectTask(task) { store.showAiPanel = false; store.activeTask = task; },
     toggleAll() { store.isAllExpanded = !store.isAllExpanded; getters.activeTasks.value.forEach(t => t.expanded = store.isAllExpanded); },
@@ -311,6 +335,7 @@ export const actions = {
     formatRepeatDays(d) { if (!d || !d.length) return ['无']; const m = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 0: '日' }; return d.sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b)).map(x => '周' + m[x]); },
     formatTimeOnly(d) { return d && d.includes('T') ? d.split('T')[1] : ''; },
     formatDateTime(d) { return d ? d.replace('T', ' ') : ''; },
+    formatFileSize(size) { if (size === null || size === undefined || size === '') return '-'; const units = ['B', 'KB', 'MB', 'GB']; let value = Number(size); let index = 0; while (value >= 1024 && index < units.length - 1) { value /= 1024; index++; } return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`; },
     getStatsStatusStyle(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400') : (t.status === 'doing' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400'); },
     getStatsStatusLabel(t) { return t.status === 'done' ? (t.deadline && t.completedDate > t.deadline ? '超时完成' : '已完成') : { 'todo': '未开始', 'doing': '进行中' }[t.status]; },
     async sendAiMessage() {

@@ -1,0 +1,12 @@
+{
+  "name": "workplan",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "check:js": "for f in $(rg --files -g '*.js'); do node --check \"$f\" || exit 1; done",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
