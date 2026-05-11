@@ -25,10 +25,25 @@ module.exports = async (req, res) => {
 async function sendReminder() {
     const { SUPABASE_URL, SUPABASE_KEY, WEIXIN_CORP_ID, WEIXIN_AGENT_ID, WEIXIN_SECRET, WEIXIN_USER_ID } = process.env;
 
-    // 1. 获取 Access Token
-    const tokenRes = await fetch(
-        `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${WEIXIN_CORP_ID}&corpsecret=${WEIXIN_SECRET}`
-    );
+    // ---- 调试日志 ----
+    console.log('ENV DEBUG:', {
+        hasCorpId: !!WEIXIN_CORP_ID,
+        corpIdLen: (WEIXIN_CORP_ID || '').length,
+        corpIdPreview: (WEIXIN_CORP_ID || '').slice(0, 10),
+        hasSecret: !!WEIXIN_SECRET,
+        hasAgentId: !!WEIXIN_AGENT_ID,
+    });
+    // ---- 结束调试 ----
+
+    if (!WEIXIN_CORP_ID || !WEIXIN_SECRET) {
+        throw new Error('缺少企业微信环境变量，请检查 Vercel 后台配置');
+    }
+
+    // 1. 获取 Access Token（域名：qyapi.weixin.qq.com）
+    const tokenUrl = `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${WEIXIN_CORP_ID}&corpsecret=${WEIXIN_SECRET}`;
+    console.log('请求 Token URL:', tokenUrl.replace(WEIXIN_SECRET, '***'));
+
+    const tokenRes = await fetch(tokenUrl);
     const tokenData = await tokenRes.json();
 
     if (tokenData.errcode !== 0) {
