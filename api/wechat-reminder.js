@@ -23,25 +23,31 @@ module.exports = async (req, res) => {
 // ============ 核心逻辑 ============
 
 async function sendReminder() {
-    const { SUPABASE_URL, SUPABASE_KEY, WEIXIN_CORP_ID, WEIXIN_AGENT_ID, WEIXIN_SECRET, WEIXIN_USER_ID } = process.env;
+    // 从环境变量读取，读不到时用硬编码默认值（来自 js/services.js）
+    const SUPABASE_URL  = process.env.SUPABASE_URL  || 'https://scjswpjktydojedqywxq.supabase.co';
+    const SUPABASE_KEY  = process.env.SUPABASE_KEY  || 'sb_publishable_TSXrb7sbhV7l5hgqjC0KuA_dVdxmSpu';
+    const WEIXIN_CORP_ID  = process.env.WEIXIN_CORP_ID;
+    const WEIXIN_AGENT_ID = process.env.WEIXIN_AGENT_ID;
+    const WEIXIN_SECRET  = process.env.WEIXIN_SECRET;
+    const WEIXIN_USER_ID = process.env.WEIXIN_USER_ID || 'QinSiQi';
 
     // ---- 调试日志 ----
     console.log('ENV DEBUG:', {
-        hasCorpId: !!WEIXIN_CORP_ID,
-        corpIdLen: (WEIXIN_CORP_ID || '').length,
-        corpIdPreview: (WEIXIN_CORP_ID || '').slice(0, 10),
-        hasSecret: !!WEIXIN_SECRET,
+        hasCorpId:  !!WEIXIN_CORP_ID,
+        corpId:     WEIXIN_CORP_ID,
+        hasSecret:  !!WEIXIN_SECRET,
         hasAgentId: !!WEIXIN_AGENT_ID,
+        hasUserId:  !!WEIXIN_USER_ID,
     });
     // ---- 结束调试 ----
 
     if (!WEIXIN_CORP_ID || !WEIXIN_SECRET) {
-        throw new Error('缺少企业微信环境变量，请检查 Vercel 后台配置');
+        throw new Error('缺少企业微信环境变量，请在 Vercel 后台配置 WEIXIN_CORP_ID / WEIXIN_SECRET');
     }
 
-    // 1. 获取 Access Token（域名：qyapi.weixin.qq.com）
+    // 1. 获取 Access Token
     const tokenUrl = `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${WEIXIN_CORP_ID}&corpsecret=${WEIXIN_SECRET}`;
-    console.log('请求 Token URL:', tokenUrl.replace(WEIXIN_SECRET, '***'));
+    console.log('请求 Token URL（已隐去 Secret）');
 
     const tokenRes = await fetch(tokenUrl);
     const tokenData = await tokenRes.json();
