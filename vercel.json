@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/wechat-reminder",
+      "schedule": "0 9 * * 1-5"
+    }
+  ]
+}
