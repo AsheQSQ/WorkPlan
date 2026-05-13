@@ -1,0 +1,34 @@
+name: WorkPlan 每日提醒
+
+on:
+  # 北京时间周一到周五 9:00 执行（UTC 1:00）
+  schedule:
+    - cron: '0 1 * * 1-5'
+  # 支持手动触发测试
+  workflow_dispatch:
+
+jobs:
+  send-reminder:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 代码
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: 执行提醒任务
+        env:
+          SUPABASE_URL:    ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:    ${{ secrets.SUPABASE_KEY }}
+          WEIXIN_CORP_ID:  ${{ secrets.WEIXIN_CORP_ID }}
+          WEIXIN_SECRET:   ${{ secrets.WEIXIN_SECRET }}
+          WEIXIN_AGENT_ID: ${{ secrets.WEIXIN_AGENT_ID }}
+          WEIXIN_USER_ID:  ${{ secrets.WEIXIN_USER_ID }}
+        run: node scripts/send-reminder.js
