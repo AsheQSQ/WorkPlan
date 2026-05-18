@@ -9,6 +9,7 @@ export const store = reactive({
     groups: [], activeGroupId: 'all', tasks: [], templates: [], scheduledTasks: [], activeTask: null, modal: { show: false, isEdit: false, data: {} }, isAllExpanded: false,
     openEditors: [], baseZIndex: 100, dragState: { isDragging: false, index: -1, startX: 0, startY: 0, initialX: 0, initialY: 0 },
     localAccessMap: {}, fileSearchQuery: '', fileTypeFilter: 'all', fileGroupId: 'all', statsStart: new Date().toISOString().split('T')[0], statsEnd: new Date().toISOString().split('T')[0], statsStatus: 'all', statsGroupId: 'all', statsRangeType: 'week', draggingIndex: null,
+    isDraggingFiles: false,
     // 🌟 核心修改：将原来的单变量变成字典对象，按分组ID存储不同分组的配置
     completedLookbacks: JSON.parse(localStorage.getItem('planpro_lookbacks') || '{}')
 });
@@ -155,15 +156,21 @@ export const actions = {
             } catch (error) { alert("文件读取失败"); }
         }
     },
-    async handleLocalFileUpload(event) {
-        const files = Array.from(event.target.files);
+    async handleLocalFileUpload(filesOrEvent) {
+        let files;
+        if (filesOrEvent instanceof FileList) {
+            files = Array.from(filesOrEvent);
+        } else {
+            files = Array.from(filesOrEvent.target.files);
+            filesOrEvent.target.value = '';
+        }
         if (files.length === 0) return;
         const oversized = files.filter(f => f.size > 50 * 1024 * 1024);
         if (oversized.length > 0) {
             alert(`以下文件过大（超过50MB），已跳过：\n${oversized.map(f => f.name).join('\n')}`);
         }
         const validFiles = files.filter(f => f.size <= 50 * 1024 * 1024);
-        if (validFiles.length === 0) { event.target.value = ''; return; }
+        if (validFiles.length === 0) return;
         if (!store.activeTask.attachments) store.activeTask.attachments = [];
         let uploaded = 0;
         for (const file of validFiles) {
@@ -180,7 +187,6 @@ export const actions = {
             actions.updateStatus(store.activeTask);
             await actions.checkLocalFilesAccessibility();
         }
-        event.target.value = '';
     },
     bringToFront(index) { store.baseZIndex++; store.openEditors[index].zIndex = store.baseZIndex; },
     startDrag(event, index) {
