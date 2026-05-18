@@ -152,20 +152,45 @@ export const actions = {
         if (!doc) { actions.openMdEditor(task, null); return; }
         if (doc.type === 'richtext') actions.openMdEditor(task, doc);
         else if (doc.type === 'local_file') {
-            // 🌟 如果有路径且有目录句柄，直接用系统默认应用打开
+            // 🌟 方案A：尝试从 IndexedDB 获取 fileHandle（File System Access API）
+            try {
+                const fileHandle = await window.localforage.getItem(doc.id + '_handle');
+                if (fileHandle) {
+                    // 验证 handle 是否仍然有效
+                    const permission = await fileHandle.queryPermission({ mode: 'read' });
+                    if (permission === 'granted') {
+                        const file = await fileHandle.getFile();
+                        const url = URL.createObjectURL(file);
+                        // 🌟 使用 _blank + noopener 让浏览器用新标签页打开，浏览器会尝试用默认应用
+                        const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+                        if (!newWindow) {
+                            // 弹窗被拦截，降级为下载
+                            const a = document.createElement('a'); a.href = url; a.download = doc.title; a.click();
+                        }
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn('FileSystemFileHandle 读取失败:', err);
+            }
+
+            // 🌟 方案B：尝试从目录句柄获取文件
             if (doc.path && store.localFileDirHandle) {
                 try {
                     const fileHandle = await store.localFileDirHandle.getFileHandle(doc.path);
                     const file = await fileHandle.getFile();
-                    // 使用 File System Access API 打开文件，会调用系统默认应用
                     const url = URL.createObjectURL(file);
-                    window.open(url, '_blank');
+                    const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+                    if (!newWindow) {
+                        const a = document.createElement('a'); a.href = url; a.download = doc.title; a.click();
+                    }
                     return;
                 } catch (err) {
-                    console.warn('路径文件读取失败，尝试 IndexDB:', err);
+                    console.warn('目录文件读取失败:', err);
                 }
             }
-            // 🌟 fallback：尝试从 IndexDB 读取
+
+            // 🌟 方案C：Fallback，IndexDB 存储的完整文件
             try {
                 const fileBlob = await window.localforage.getItem(doc.id);
                 if (!fileBlob) return alert(`文件不可访问，请检查本地路径设置`);
@@ -182,6 +207,50 @@ export const actions = {
             filesOrEvent.target.value = '';
         }
         if (files.length === 0) return;
+
+        // 🌟 如果支持 File System Access API 且设置了目录，使用现代化的文件选择
+        if ('showOpenFilePicker' in window && store.localFileDirHandle) {
+            try {
+                const handles = await window.showOpenFilePicker({
+                    multiple: true,
+                    directory: store.localFileDirHandle
+                });
+
+                if (!store.activeTask.attachments) store.activeTask.attachments = [];
+                let uploaded = 0;
+
+                for (const fileHandle of handles) {
+                    const file = await fileHandle.getFile();
+                    const docId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+                    // 🌟 关键：把 fileHandle 存入 IndexedDB（可以序列化）
+                    await window.localforage.setItem(docId + '_handle', fileHandle);
+
+                    const attachmentMeta = {
+                        id: docId,
+                        type: 'local_file',
+                        title: file.name,
+                        size: file.size,
+                        created_at: new Date().toISOString()
+                    };
+                    store.activeTask.attachments.push(attachmentMeta);
+                    uploaded++;
+                }
+
+                if (uploaded > 0) {
+                    await supabaseClient.from('tasks').update({ attachments: store.activeTask.attachments }).eq('id', store.activeTask.id);
+                    actions.updateStatus(store.activeTask);
+                }
+                return;
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('文件选择失败:', err);
+                }
+                // 用户取消选择，继续用传统方式
+            }
+        }
+
+        // 🌟 传统方式：拖拽或点击上传（IndexDB 存储完整文件）
         const oversized = files.filter(f => f.size > 50 * 1024 * 1024);
         if (oversized.length > 0) {
             alert(`以下文件过大（超过50MB），已跳过：\n${oversized.map(f => f.name).join('\n')}`);
@@ -189,49 +258,15 @@ export const actions = {
         const validFiles = files.filter(f => f.size <= 50 * 1024 * 1024);
         if (validFiles.length === 0) return;
         if (!store.activeTask.attachments) store.activeTask.attachments = [];
-
-        // 🌟 检查是否支持 File System Access API
-        const useFileSystemAPI = 'showDirectoryPicker' in window && store.localFileDirHandle;
-
         let uploaded = 0;
         for (const file of validFiles) {
             const docId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-
-            if (useFileSystemAPI) {
-                // 🌟 方案A：File System Access API，文件存到本地目录，只记录路径
-                try {
-                    const fileName = `${docId}_${file.name}`; // 用 docId 作为前缀避免文件名冲突
-                    const fileHandle = await store.localFileDirHandle.getFileHandle(fileName, { create: true });
-                    const writable = await fileHandle.createWritable();
-                    await writable.write(file);
-                    await writable.close();
-
-                    // 只存储元数据和路径，不存文件内容
-                    const attachmentMeta = {
-                        id: docId,
-                        type: 'local_file',
-                        title: file.name,
-                        size: file.size,
-                        created_at: new Date().toISOString(),
-                        path: fileName // 🌟 关键：存储相对路径
-                    };
-                    store.activeTask.attachments.push(attachmentMeta);
-                    uploaded++;
-                } catch (error) {
-                    console.error(`文件 ${file.name} 保存失败`, error);
-                    alert(`文件 "${file.name}" 保存失败：${error.message}`);
-                }
-            } else {
-                // 🌟 方案B：Fallback，IndexDB 存储完整文件（兼容性处理）
-                const attachmentMeta = { id: docId, type: 'local_file', title: file.name, size: file.size, created_at: new Date().toISOString() };
-                try {
-                    await window.localforage.setItem(docId, file);
-                    store.activeTask.attachments.push(attachmentMeta);
-                    uploaded++;
-                } catch (error) {
-                    console.error(`文件 ${file.name} 保存失败`, error);
-                }
-            }
+            const attachmentMeta = { id: docId, type: 'local_file', title: file.name, size: file.size, created_at: new Date().toISOString() };
+            try {
+                await window.localforage.setItem(docId, file);
+                store.activeTask.attachments.push(attachmentMeta);
+                uploaded++;
+            } catch (error) { console.error(`文件 ${file.name} 保存失败`, error); }
         }
         if (uploaded > 0) {
             await supabaseClient.from('tasks').update({ attachments: store.activeTask.attachments }).eq('id', store.activeTask.id);
