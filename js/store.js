@@ -144,8 +144,20 @@ export const actions = {
     },
     async checkLocalFilesAccessibility() {
         try {
-            const keys = await window.localforage.keys(); const keySet = new Set(keys);
-            store.tasks.forEach(task => { if (task.attachments) task.attachments.forEach(doc => { if (doc.type === 'local_file') store.localAccessMap[doc.id] = keySet.has(doc.id); }); });
+            const keys = await window.localforage.keys();
+            const keySet = new Set(keys);
+            store.tasks.forEach(task => {
+                if (task.attachments) {
+                    task.attachments.forEach(doc => {
+                        if (doc.type === 'local_file') {
+                            // 检查是否有 fileHandle（新方式）或文件本身（旧方式）
+                            const hasHandle = keySet.has(doc.id + '_handle');
+                            const hasBlob = keySet.has(doc.id);
+                            store.localAccessMap[doc.id] = hasHandle || hasBlob;
+                        }
+                    });
+                }
+            });
         } catch (error) { console.error("检测失败", error); }
     },
     async openAttachment(task, doc = null) {
@@ -156,46 +168,62 @@ export const actions = {
             try {
                 const fileHandle = await window.localforage.getItem(doc.id + '_handle');
                 if (fileHandle) {
-                    // 验证 handle 是否仍然有效
-                    const permission = await fileHandle.queryPermission({ mode: 'read' });
+                    // 检查权限状态
+                    let permission = 'prompt';
+                    try {
+                        permission = await fileHandle.queryPermission({ mode: 'read' });
+                    } catch (e) {
+                        // queryPermission 失败，尝试请求权限
+                    }
+
                     if (permission === 'granted') {
+                        // 有权限，直接打开
                         const file = await fileHandle.getFile();
                         const url = URL.createObjectURL(file);
-                        // 🌟 使用 _blank + noopener 让浏览器用新标签页打开，浏览器会尝试用默认应用
-                        const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
-                        if (!newWindow) {
-                            // 弹窗被拦截，降级为下载
-                            const a = document.createElement('a'); a.href = url; a.download = doc.title; a.click();
-                        }
+                        window.open(url, '_blank');
+                        store.localAccessMap[doc.id] = true;
                         return;
+                    } else if (permission === 'prompt') {
+                        // 需要请求权限
+                        try {
+                            permission = await fileHandle.requestPermission({ mode: 'read' });
+                            if (permission === 'granted') {
+                                const file = await fileHandle.getFile();
+                                const url = URL.createObjectURL(file);
+                                window.open(url, '_blank');
+                                store.localAccessMap[doc.id] = true;
+                                return;
+                            }
+                        } catch (e) {
+                            // 用户拒绝权限
+                        }
                     }
+
+                    // 权限被拒绝或获取失败
+                    store.localAccessMap[doc.id] = false;
+                    alert('文件权限已被撤销，请重新上传该文件');
+                    return;
                 }
             } catch (err) {
                 console.warn('FileSystemFileHandle 读取失败:', err);
             }
 
-            // 🌟 方案B：尝试从目录句柄获取文件
-            if (doc.path && store.localFileDirHandle) {
-                try {
-                    const fileHandle = await store.localFileDirHandle.getFileHandle(doc.path);
-                    const file = await fileHandle.getFile();
-                    const url = URL.createObjectURL(file);
-                    const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
-                    if (!newWindow) {
-                        const a = document.createElement('a'); a.href = url; a.download = doc.title; a.click();
-                    }
-                    return;
-                } catch (err) {
-                    console.warn('目录文件读取失败:', err);
-                }
-            }
-
-            // 🌟 方案C：Fallback，IndexDB 存储的完整文件
+            // 🌟 方案B：Fallback，IndexDB 存储的完整文件（旧方式）
             try {
                 const fileBlob = await window.localforage.getItem(doc.id);
-                if (!fileBlob) return alert(`文件不可访问，请检查本地路径设置`);
-                const url = URL.createObjectURL(fileBlob); const a = document.createElement('a'); a.href = url; a.download = doc.title; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-            } catch (error) { alert("文件读取失败"); }
+                if (fileBlob) {
+                    store.localAccessMap[doc.id] = true;
+                    const url = URL.createObjectURL(fileBlob);
+                    const a = document.createElement('a'); a.href = url; a.download = doc.title; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                    return;
+                }
+            } catch (error) {
+                console.error("文件读取失败", error);
+            }
+
+            // 所有方案都失败
+            store.localAccessMap[doc.id] = false;
+            alert("文件不可访问，请确认文件是否已被移动或删除");
         }
     },
     async handleLocalFileUpload(filesOrEvent) {
