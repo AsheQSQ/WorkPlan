@@ -156,18 +156,30 @@ export const actions = {
         }
     },
     async handleLocalFileUpload(event) {
-        const file = event.target.files[0]; if (!file) return;
-        if (file.size > 50 * 1024 * 1024) { alert("文件过大！建议本地缓存单文件不要超过 50MB。"); event.target.value = ''; return; }
-        const docId = 'local_' + Date.now() + Math.random().toString(36).substr(2, 4);
-        const attachmentMeta = { id: docId, type: 'local_file', title: file.name, size: file.size, created_at: new Date().toISOString() };
-        try {
-            await window.localforage.setItem(docId, file);
-            if (!store.activeTask.attachments) store.activeTask.attachments = [];
-            store.activeTask.attachments.push(attachmentMeta);
+        const files = Array.from(event.target.files);
+        if (files.length === 0) return;
+        const oversized = files.filter(f => f.size > 50 * 1024 * 1024);
+        if (oversized.length > 0) {
+            alert(`以下文件过大（超过50MB），已跳过：\n${oversized.map(f => f.name).join('\n')}`);
+        }
+        const validFiles = files.filter(f => f.size <= 50 * 1024 * 1024);
+        if (validFiles.length === 0) { event.target.value = ''; return; }
+        if (!store.activeTask.attachments) store.activeTask.attachments = [];
+        let uploaded = 0;
+        for (const file of validFiles) {
+            const docId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            const attachmentMeta = { id: docId, type: 'local_file', title: file.name, size: file.size, created_at: new Date().toISOString() };
+            try {
+                await window.localforage.setItem(docId, file);
+                store.activeTask.attachments.push(attachmentMeta);
+                uploaded++;
+            } catch (error) { console.error(`文件 ${file.name} 保存失败`, error); }
+        }
+        if (uploaded > 0) {
             await supabaseClient.from('tasks').update({ attachments: store.activeTask.attachments }).eq('id', store.activeTask.id);
             actions.updateStatus(store.activeTask);
             await actions.checkLocalFilesAccessibility();
-        } catch (error) { alert("文件保存失败！"); }
+        }
         event.target.value = '';
     },
     bringToFront(index) { store.baseZIndex++; store.openEditors[index].zIndex = store.baseZIndex; },
