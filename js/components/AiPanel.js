@@ -43,5 +43,5 @@ export default {
             <div class="absolute bottom-6 right-6 z-10"><button @click="openModal(activeTask)" class="w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-300 dark:shadow-none flex items-center justify-center active:scale-90 transition-transform"><i class="ph-bold ph-pencil-simple text-2xl"></i></button></div>
         </div>
     `,
-    setup() { return { ...toRefs(store), ...getters, ...actions }; }
+    setup() { return { store, ...toRefs(store), ...getters, ...actions }; }
 }
