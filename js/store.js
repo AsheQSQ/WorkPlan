@@ -13,6 +13,14 @@ export const store = reactive({
     // 🌟 File System Access API 相关
     localFileDirHandle: null, // 目录句柄（授权后持有）
     localFileStoragePath: localStorage.getItem('planpro_local_file_path') || '', // 显示用路径
+    // 🌟 LocalHelper 本地助手相关
+    localHelper: {
+        connected: false,       // WebSocket 连接状态
+        installed: null,        // 是否已安装 (null=未检测, true=已安装, false=未安装)
+        ws: null,               // WebSocket 实例
+        reconnectTimer: null,   // 重连定时器
+        pendingFiles: {},       // 待处理的文件选择回调
+    },
     // 🌟 核心修改：将原来的单变量变成字典对象，按分组ID存储不同分组的配置
     completedLookbacks: JSON.parse(localStorage.getItem('planpro_lookbacks') || '{}')
 });
@@ -546,5 +554,378 @@ export const actions = {
             return { id: Date.now().toString() + Math.random().toString(36).substr(2, 5), title: parsed.title || "未命名任务", date: aiDate, status: 'todo', priority: parsed.priority || 'normal', subtasks: [], note: parsed.note || '', groupId: store.activeGroupId === 'all' ? '' : store.activeGroupId, expanded: false, deadline: '', startTime: null, completedDate: null, isFromSchedule: false };
         } catch (error) { throw new Error("AI 数据格式化失败，请重试或换个说法。"); }
     },
-    scrollToBottom() { const c1 = document.getElementById('chatContainer'); const c2 = document.getElementById('chatContainerMobile'); if (c1) c1.scrollTop = c1.scrollHeight; if (c2) c2.scrollTop = c2.scrollHeight; }
+    scrollToBottom() { const c1 = document.getElementById('chatContainer'); const c2 = document.getElementById('chatContainerMobile'); if (c1) c1.scrollTop = c1.scrollHeight; if (c2) c2.scrollTop = c2.scrollHeight; },
+
+    // ============================================
+    // 🌟 LocalHelper 本地助手 WebSocket 集成
+    // ============================================
+    WS_URL: 'ws://127.0.0.1:18080',
+    WS_TIMEOUT: 2000,
+
+    // 检测 LocalHelper 是否运行
+    async checkLocalHelper() {
+        if (store.localHelper.ws && store.localHelper.connected) {
+            return true;
+        }
+
+        return new Promise((resolve) => {
+            const ws = new WebSocket(actions.WS_URL);
+            const timeout = setTimeout(() => {
+                ws.close();
+                store.localHelper.installed = false;
+                resolve(false);
+            }, actions.WS_TIMEOUT);
+
+            ws.onopen = () => {
+                clearTimeout(timeout);
+                store.localHelper.ws = ws;
+                store.localHelper.connected = true;
+                store.localHelper.installed = true;
+                console.log('LocalHelper 已连接');
+
+                // 监听消息
+                ws.onmessage = (event) => actions.handleLocalHelperMessage(event);
+
+                // 启动心跳
+                actions.startLocalHelperHeartbeat();
+
+                resolve(true);
+            };
+
+            ws.onerror = () => {
+                clearTimeout(timeout);
+                store.localHelper.installed = false;
+                resolve(false);
+            };
+
+            ws.onclose = () => {
+                store.localHelper.connected = false;
+                store.localHelper.ws = null;
+                console.log('LocalHelper 连接已断开');
+            };
+        });
+    },
+
+    // 处理 LocalHelper 消息
+    handleLocalHelperMessage(event) {
+        try {
+            const msg = JSON.parse(event.data);
+            console.log('LocalHelper 消息:', msg);
+
+            // 处理 pick_file 响应
+            if (msg.action === 'pick_file' && msg.success && msg.data) {
+                const callback = store.localHelper.pendingFiles.pickCallback;
+                if (callback) {
+                    callback(msg.data);
+                    delete store.localHelper.pendingFiles.pickCallback;
+                }
+            }
+        } catch (e) {
+            console.error('LocalHelper 消息解析失败:', e);
+        }
+    },
+
+    // 启动心跳
+    startLocalHelperHeartbeat() {
+        setInterval(() => {
+            if (store.localHelper.connected && store.localHelper.ws) {
+                actions.sendLocalHelper({ action: 'ping' });
+            }
+        }, 30000); // 每 30 秒心跳一次
+    },
+
+    // 发送消息到 LocalHelper
+    sendLocalHelper(data) {
+        return new Promise((resolve, reject) => {
+            if (!store.localHelper.connected || !store.localHelper.ws) {
+                reject(new Error('LocalHelper 未连接'));
+                return;
+            }
+
+            try {
+                store.localHelper.ws.send(JSON.stringify(data));
+                resolve();
+            } catch (e) {
+                reject(e);
+            }
+        });
+    },
+
+    // 尝试唤醒 LocalHelper
+    wakeLocalHelper() {
+        // 尝试通过自定义协议唤醒
+        window.location.href = 'localhelper://start';
+    },
+
+    // 选择本地文件（通过 LocalHelper）
+    async pickLocalFileViaHelper() {
+        // 先检查是否已连接
+        const isConnected = await actions.checkLocalHelper();
+
+        if (!isConnected) {
+            // 尝试唤醒
+            actions.wakeLocalHelper();
+
+            // 延迟后再次检测
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            const isConnectedAfterWake = await actions.checkLocalHelper();
+
+            if (!isConnectedAfterWake) {
+                alert('未检测到 LocalHelper，请先下载安装。\n\n下载地址: /downloads/LocalHelper.exe');
+                return null;
+            }
+        }
+
+        return new Promise((resolve) => {
+            store.localHelper.pendingFiles.pickCallback = (fileInfo) => {
+                resolve(fileInfo);
+            };
+            actions.sendLocalHelper({ action: 'pick_file' }).catch(e => {
+                console.error('发送 pick_file 失败:', e);
+                resolve(null);
+            });
+        });
+    },
+
+    // 打开本地文件（通过 LocalHelper）
+    async openLocalFileViaHelper(fileId) {
+        const isConnected = await actions.checkLocalHelper();
+
+        if (!isConnected) {
+            actions.wakeLocalHelper();
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            if (!(await actions.checkLocalHelper())) {
+                alert('未检测到 LocalHelper，请先下载安装。');
+                return false;
+            }
+        }
+
+        try {
+            await actions.sendLocalHelper({
+                action: 'open_file',
+                data: { id: fileId }
+            });
+            return true;
+        } catch (e) {
+            console.error('打开文件失败:', e);
+            alert('打开文件失败: ' + e.message);
+            return false;
+        }
+    },
+
+    // 获取 LocalHelper 管理的文件列表
+    async getLocalHelperFiles() {
+        const isConnected = await actions.checkLocalHelper();
+        if (!isConnected) {
+            return [];
+        }
+
+        try {
+            const response = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('请求超时'));
+                }, 5000);
+
+                const handler = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.action === 'get_files') {
+                            clearTimeout(timeout);
+                            store.localHelper.ws.removeEventListener('message', handler);
+                            resolve(msg);
+                        }
+                    } catch (e) {}
+                };
+
+                store.localHelper.ws.addEventListener('message', handler);
+                actions.sendLocalHelper({ action: 'get_files' }).catch(reject);
+            });
+
+            return response.data?.files || [];
+        } catch (e) {
+            console.error('获取文件列表失败:', e);
+            return [];
+        }
+    },
+
+    // 删除 LocalHelper 管理的文件记录
+    async deleteLocalFileRecord(fileId) {
+        try {
+            await actions.sendLocalHelper({
+                action: 'delete_file',
+                data: { id: fileId }
+            });
+            return true;
+        } catch (e) {
+            console.error('删除文件记录失败:', e);
+            return false;
+        }
+    },
+
+    // ============================================
+    // 改进的文件打开逻辑（优先使用 LocalHelper）
+    // ============================================
+    async openAttachment(task, doc = null) {
+        if (!doc) { actions.openMdEditor(task, null); return; }
+        if (doc.type === 'richtext') actions.openMdEditor(task, doc);
+        else if (doc.type === 'local_file') {
+            // 🌟 优先使用 LocalHelper 打开文件
+            if (store.localHelper.installed !== false) {
+                const helperOpened = await actions.openLocalFileViaHelper(doc.localId || doc.id);
+                if (helperOpened) {
+                    store.localAccessMap[doc.id] = true;
+                    return;
+                }
+            }
+
+            // Fallback: 尝试 File System Access API
+            try {
+                const fileHandle = await window.localforage.getItem(doc.id + '_handle');
+                if (fileHandle) {
+                    let permission = 'prompt';
+                    try { permission = await fileHandle.queryPermission({ mode: 'read' }); } catch (e) {}
+
+                    if (permission === 'granted') {
+                        const file = await fileHandle.getFile();
+                        const url = URL.createObjectURL(file);
+                        window.open(url, '_blank');
+                        store.localAccessMap[doc.id] = true;
+                        return;
+                    } else if (permission === 'prompt') {
+                        permission = await fileHandle.requestPermission({ mode: 'read' });
+                        if (permission === 'granted') {
+                            const file = await fileHandle.getFile();
+                            const url = URL.createObjectURL(file);
+                            window.open(url, '_blank');
+                            store.localAccessMap[doc.id] = true;
+                            return;
+                        }
+                    }
+                    store.localAccessMap[doc.id] = false;
+                    alert('文件权限已被撤销，请重新上传该文件');
+                    return;
+                }
+            } catch (err) {
+                console.warn('FileSystemFileHandle 读取失败:', err);
+            }
+
+            // Fallback: IndexedDB 存储的文件
+            try {
+                const fileBlob = await window.localforage.getItem(doc.id);
+                if (fileBlob) {
+                    store.localAccessMap[doc.id] = true;
+                    const url = URL.createObjectURL(fileBlob);
+                    const a = document.createElement('a'); a.href = url; a.download = doc.title; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                    return;
+                }
+            } catch (error) {
+                console.error("文件读取失败", error);
+            }
+
+            store.localAccessMap[doc.id] = false;
+            alert("文件不可访问，请确认文件是否已被移动或删除");
+        }
+    },
+
+    // 改进的文件上传逻辑
+    async handleLocalFileUpload(filesOrEvent) {
+        let files;
+        if (filesOrEvent instanceof FileList) {
+            files = Array.from(filesOrEvent);
+        } else {
+            files = Array.from(filesOrEvent.target.files);
+            filesOrEvent.target.value = '';
+        }
+        if (files.length === 0) return;
+
+        // 🌟 优先尝试 LocalHelper（如果已安装）
+        if (store.localHelper.connected || store.localHelper.installed === null) {
+            const isConnected = await actions.checkLocalHelper();
+            if (isConnected) {
+                for (const file of files) {
+                    const fileInfo = await actions.pickLocalFileViaHelper();
+                    if (fileInfo) {
+                        if (!store.activeTask.attachments) store.activeTask.attachments = [];
+                        store.activeTask.attachments.push({
+                            id: fileInfo.id,
+                            localId: fileInfo.id, // LocalHelper 使用的 ID
+                            type: 'local_file',
+                            title: fileInfo.name,
+                            path: fileInfo.path,
+                            size: fileInfo.size,
+                            created_at: new Date().toISOString()
+                        });
+                        await actions.saveTask(store.activeTask);
+                    }
+                }
+                return;
+            }
+        }
+
+        // 🌟 如果不支持 LocalHelper 或未安装，回退到 File System Access API
+        if ('showOpenFilePicker' in window && store.localFileDirHandle) {
+            try {
+                const handles = await window.showOpenFilePicker({
+                    multiple: true,
+                    directory: store.localFileDirHandle
+                });
+
+                if (!store.activeTask.attachments) store.activeTask.attachments = [];
+                let uploaded = 0;
+
+                for (const fileHandle of handles) {
+                    const file = await fileHandle.getFile();
+                    const docId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+                    // 🌟 关键：把 fileHandle 存入 IndexedDB（可以序列化）
+                    await window.localforage.setItem(docId + '_handle', fileHandle);
+
+                    const attachmentMeta = {
+                        id: docId,
+                        type: 'local_file',
+                        title: file.name,
+                        size: file.size,
+                        created_at: new Date().toISOString()
+                    };
+                    store.activeTask.attachments.push(attachmentMeta);
+                    uploaded++;
+                }
+
+                if (uploaded > 0) {
+                    await supabaseClient.from('tasks').update({ attachments: store.activeTask.attachments }).eq('id', store.activeTask.id);
+                    actions.updateStatus(store.activeTask);
+                }
+                return;
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('文件选择失败:', err);
+                }
+                // 用户取消选择，继续用传统方式
+            }
+        }
+
+        // 🌟 传统方式：拖拽或点击上传（IndexDB 存储完整文件）
+        const oversized = files.filter(f => f.size > 50 * 1024 * 1024);
+        if (oversized.length > 0) {
+            alert(`以下文件过大（超过50MB），已跳过：\n${oversized.map(f => f.name).join('\n')}`);
+        }
+        const validFiles = files.filter(f => f.size <= 50 * 1024 * 1024);
+        if (validFiles.length === 0) return;
+        if (!store.activeTask.attachments) store.activeTask.attachments = [];
+        let uploaded = 0;
+        for (const file of validFiles) {
+            const docId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            const attachmentMeta = { id: docId, type: 'local_file', title: file.name, size: file.size, created_at: new Date().toISOString() };
+            try {
+                await window.localforage.setItem(docId, file);
+                store.activeTask.attachments.push(attachmentMeta);
+                uploaded++;
+            } catch (error) { console.error(`文件 ${file.name} 保存失败`, error); }
+        }
+        if (uploaded > 0) {
+            await supabaseClient.from('tasks').update({ attachments: store.activeTask.attachments }).eq('id', store.activeTask.id);
+            actions.updateStatus(store.activeTask);
+        }
+    }
 };
