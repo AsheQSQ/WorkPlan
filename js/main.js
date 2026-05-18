@@ -28,6 +28,9 @@ const app = createApp({
 
             if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().then(isPersisted => { console.log(`持久化: ${isPersisted ? '已开启' : '未开启'}`); }); }
 
+            // 🌟 恢复本地文件目录句柄
+            actions.restoreLocalFileDirectory();
+
             setInterval(() => {
                 store.now = new Date(); const nowIso = new Date(store.now.getTime() - (store.now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16); let tasksChanged = false;
                 store.tasks.forEach(t => { if (t.status === 'todo' && t.date && t.date <= nowIso) { t.status = 'doing'; actions.updateStatus(t); tasksChanged = true; } });

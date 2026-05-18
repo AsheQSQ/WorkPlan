@@ -10,6 +10,9 @@ export const store = reactive({
     openEditors: [], baseZIndex: 100, dragState: { isDragging: false, index: -1, startX: 0, startY: 0, initialX: 0, initialY: 0 },
     localAccessMap: {}, fileSearchQuery: '', fileTypeFilter: 'all', fileGroupId: 'all', statsStart: new Date().toISOString().split('T')[0], statsEnd: new Date().toISOString().split('T')[0], statsStatus: 'all', statsGroupId: 'all', statsRangeType: 'week', draggingIndex: null,
     isDraggingFiles: false,
+    // 🌟 File System Access API 相关
+    localFileDirHandle: null, // 目录句柄（授权后持有）
+    localFileStoragePath: localStorage.getItem('planpro_local_file_path') || '', // 显示用路径
     // 🌟 核心修改：将原来的单变量变成字典对象，按分组ID存储不同分组的配置
     completedLookbacks: JSON.parse(localStorage.getItem('planpro_lookbacks') || '{}')
 });
@@ -149,9 +152,23 @@ export const actions = {
         if (!doc) { actions.openMdEditor(task, null); return; }
         if (doc.type === 'richtext') actions.openMdEditor(task, doc);
         else if (doc.type === 'local_file') {
+            // 🌟 如果有路径且有目录句柄，直接用系统默认应用打开
+            if (doc.path && store.localFileDirHandle) {
+                try {
+                    const fileHandle = await store.localFileDirHandle.getFileHandle(doc.path);
+                    const file = await fileHandle.getFile();
+                    // 使用 File System Access API 打开文件，会调用系统默认应用
+                    const url = URL.createObjectURL(file);
+                    window.open(url, '_blank');
+                    return;
+                } catch (err) {
+                    console.warn('路径文件读取失败，尝试 IndexDB:', err);
+                }
+            }
+            // 🌟 fallback：尝试从 IndexDB 读取
             try {
                 const fileBlob = await window.localforage.getItem(doc.id);
-                if (!fileBlob) return alert(`非本机上传文件，不可显示`);
+                if (!fileBlob) return alert(`文件不可访问，请检查本地路径设置`);
                 const url = URL.createObjectURL(fileBlob); const a = document.createElement('a'); a.href = url; a.download = doc.title; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
             } catch (error) { alert("文件读取失败"); }
         }
@@ -172,20 +189,106 @@ export const actions = {
         const validFiles = files.filter(f => f.size <= 50 * 1024 * 1024);
         if (validFiles.length === 0) return;
         if (!store.activeTask.attachments) store.activeTask.attachments = [];
+
+        // 🌟 检查是否支持 File System Access API
+        const useFileSystemAPI = 'showDirectoryPicker' in window && store.localFileDirHandle;
+
         let uploaded = 0;
         for (const file of validFiles) {
             const docId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-            const attachmentMeta = { id: docId, type: 'local_file', title: file.name, size: file.size, created_at: new Date().toISOString() };
-            try {
-                await window.localforage.setItem(docId, file);
-                store.activeTask.attachments.push(attachmentMeta);
-                uploaded++;
-            } catch (error) { console.error(`文件 ${file.name} 保存失败`, error); }
+
+            if (useFileSystemAPI) {
+                // 🌟 方案A：File System Access API，文件存到本地目录，只记录路径
+                try {
+                    const fileName = `${docId}_${file.name}`; // 用 docId 作为前缀避免文件名冲突
+                    const fileHandle = await store.localFileDirHandle.getFileHandle(fileName, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(file);
+                    await writable.close();
+
+                    // 只存储元数据和路径，不存文件内容
+                    const attachmentMeta = {
+                        id: docId,
+                        type: 'local_file',
+                        title: file.name,
+                        size: file.size,
+                        created_at: new Date().toISOString(),
+                        path: fileName // 🌟 关键：存储相对路径
+                    };
+                    store.activeTask.attachments.push(attachmentMeta);
+                    uploaded++;
+                } catch (error) {
+                    console.error(`文件 ${file.name} 保存失败`, error);
+                    alert(`文件 "${file.name}" 保存失败：${error.message}`);
+                }
+            } else {
+                // 🌟 方案B：Fallback，IndexDB 存储完整文件（兼容性处理）
+                const attachmentMeta = { id: docId, type: 'local_file', title: file.name, size: file.size, created_at: new Date().toISOString() };
+                try {
+                    await window.localforage.setItem(docId, file);
+                    store.activeTask.attachments.push(attachmentMeta);
+                    uploaded++;
+                } catch (error) {
+                    console.error(`文件 ${file.name} 保存失败`, error);
+                }
+            }
         }
         if (uploaded > 0) {
             await supabaseClient.from('tasks').update({ attachments: store.activeTask.attachments }).eq('id', store.activeTask.id);
             actions.updateStatus(store.activeTask);
             await actions.checkLocalFilesAccessibility();
+        }
+    },
+
+    // 🌟 选择本地文件存储目录
+    async selectLocalFileDirectory() {
+        if (!('showDirectoryPicker' in window)) {
+            alert('您的浏览器不支持 File System Access API，请使用 Chrome 或 Edge 浏览器');
+            return;
+        }
+        try {
+            const dirHandle = await window.showDirectoryPicker({
+                mode: 'readwrite',
+                startIn: 'documents'
+            });
+            store.localFileDirHandle = dirHandle;
+
+            // 🌟 尝试获取目录路径（仅用于显示，浏览器出于安全不直接暴露路径）
+            // 如果 API 支持，尝试获取路径
+            let displayPath = '';
+            if (dirHandle.name) {
+                displayPath = dirHandle.name;
+            }
+            store.localFileStoragePath = displayPath;
+            localStorage.setItem('planpro_local_file_path', displayPath);
+            localStorage.setItem('planpro_local_file_dir_name', dirHandle.name || '');
+
+            alert(`✅ 本地存储目录已设置：${dirHandle.name}\n\n文件将直接保存到您的本地文件夹，双击可直接用系统应用打开。`);
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.error('目录选择失败:', err);
+                alert(`设置失败：${err.message}`);
+            }
+        }
+    },
+
+    // 🌟 初始化时恢复目录句柄
+    async restoreLocalFileDirectory() {
+        if (!('showDirectoryPicker' in window)) return;
+
+        const savedDirName = localStorage.getItem('planpro_local_file_dir_name');
+        if (!savedDirName) return;
+
+        try {
+            // 尝试获取已授权的目录句柄
+            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            if (dirHandle.name === savedDirName) {
+                store.localFileDirHandle = dirHandle;
+                store.localFileStoragePath = savedDirName;
+            }
+        } catch (err) {
+            // 用户未授权或目录不存在，这是正常的
+            console.log('恢复本地目录句柄失败（需用户授权）:', err.name);
         }
     },
     bringToFront(index) { store.baseZIndex++; store.openEditors[index].zIndex = store.baseZIndex; },
